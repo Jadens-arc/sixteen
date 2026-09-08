@@ -1,5 +1,5 @@
 {
-  "id": "772e2025-f47c-420e-955f-90036cf9875c",
+  "id": "e8f09be1-fe58-4716-9692-a116d0d68585",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -110,6 +110,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "body": {
           "name": "body",
           "type": "text",
@@ -145,7 +151,29 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "verses_user_id_created_at_idx": {
+          "name": "verses_user_id_created_at_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "verses_prompt_id_daily_prompts_id_fk": {
           "name": "verses_prompt_id_daily_prompts_id_fk",
@@ -163,11 +191,12 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "verses_prompt_id_unique": {
-          "name": "verses_prompt_id_unique",
+        "verses_prompt_id_user_id_unique": {
+          "name": "verses_prompt_id_user_id_unique",
           "nullsNotDistinct": false,
           "columns": [
-            "prompt_id"
+            "prompt_id",
+            "user_id"
           ]
         }
       },
