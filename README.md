@@ -67,8 +67,8 @@ See `.env.example` for the same list with inline comments.
 | `DATABASE_URL` | Yes | Neon Postgres connection string (pooled). |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Yes | Clerk publishable key. Without it, the app builds and boots in a keyless state: no sign-in, no `<ClerkProvider>`, and pages that need a signed-in user render a setup notice. |
 | `CLERK_SECRET_KEY` | Yes | Clerk secret key. |
-| `NEXT_PUBLIC_CLERK_SIGN_IN_URL` | No | Defaults to `/sign-in`. |
-| `NEXT_PUBLIC_CLERK_SIGN_UP_URL` | No | Defaults to `/sign-up`. |
+| `NEXT_PUBLIC_CLERK_SIGN_IN_URL` | No | Not needed. `<ClerkProvider>` sets `signInUrl="/sign-in"` in `src/app/layout.tsx`; set this only to move the page elsewhere. |
+| `NEXT_PUBLIC_CLERK_SIGN_UP_URL` | No | Not needed, as above for `/sign-up`. |
 | `APP_TIMEZONE` | No | IANA timezone used to resolve "today" for the daily prompt. Defaults to `America/New_York`. |
 | `AI_PROVIDER` | No | `anthropic`, `openai`, or `offline`. Defaults to `offline`. |
 | `AI_API_KEY` | Only for `anthropic`/`openai` | API key for the selected provider. |
@@ -90,6 +90,18 @@ about. `/` and `/archive` are `force-dynamic` so they're never
 prerendered at build time, and a missing `DATABASE_URL` (or any other setup
 problem) surfaces as an in-app notice at request time instead of a stack
 trace.
+
+## A note on Clerk keys and domains
+
+Use Clerk **development** keys (`pk_test_` / `sk_test_`) while the app is on a
+`*.vercel.app` hostname. A Clerk production instance serves its Frontend API
+and Account Portal from `clerk.<your-domain>` and `accounts.<your-domain>`,
+which need CNAME records on a domain you control - and nobody can add DNS
+records under `vercel.app`. Production keys there fail at sign-in with a
+redirect to an `accounts.<...>.vercel.app` host that does not resolve.
+
+Switch to production keys once a custom domain is attached to the project and
+verified in the Clerk dashboard.
 
 ## Local setup
 

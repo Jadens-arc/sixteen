@@ -96,8 +96,15 @@ export default function RootLayout({
     return <Shell>{children}</Shell>;
   }
 
+  // Without these, Clerk sends signed-out visitors to its hosted Account
+  // Portal at accounts.<domain> instead of the sign-in page this app ships.
   return (
-    <ClerkProvider>
+    <ClerkProvider
+      signInUrl="/sign-in"
+      signUpUrl="/sign-up"
+      signInFallbackRedirectUrl="/"
+      signUpFallbackRedirectUrl="/"
+    >
       <Shell>{children}</Shell>
     </ClerkProvider>
   );
