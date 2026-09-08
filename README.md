@@ -78,7 +78,15 @@ See `.env.example` for the same list with inline comments.
 
 Nothing here is required for `npm run build` to succeed - the app is meant
 to deploy to Vercel before any of these are set, then have them added in the
-dashboard afterward. `/` and `/archive` are `force-dynamic` so they're never
+dashboard afterward.
+
+The keyless state is a bootstrap convenience, not a mode to run in. Clerk's
+middleware throws on every request when no publishable key is present, so
+`src/middleware.ts` steps aside entirely until one is configured, which
+leaves every route unauthenticated. Nothing can read or write a verse in
+that state (`requireUserId()` throws, and the page renders a setup notice),
+but set the Clerk keys before pointing the app at a database you care
+about. `/` and `/archive` are `force-dynamic` so they're never
 prerendered at build time, and a missing `DATABASE_URL` (or any other setup
 problem) surfaces as an in-app notice at request time instead of a stack
 trace.
@@ -138,4 +146,6 @@ and is race-safe if two requests land at once.
 4. Run `npm run db:migrate` against the production `DATABASE_URL` (from your
    machine, or a one-off script) to create the tables.
 5. Redeploy so the new environment variables take effect. Vercel Cron picks
-   up the schedule in `vercel.json` automatically.
+   up the schedule in `vercel.json` automatically, and runs against
+   production deployments only - preview deployments rely on the on-demand
+   generation in `getOrCreateTodayPrompt()` instead.
