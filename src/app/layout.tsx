@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import Link from "next/link";
 import {
   ClerkProvider,
   SignedIn,
@@ -34,10 +35,26 @@ const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
 
 function Header() {
   return (
-    <header className="flex items-center justify-between border-b px-6 py-4">
-      <span className="font-mono text-sm font-semibold tracking-tight">
-        SIXTEEN
-      </span>
+    <header className="flex items-center justify-between gap-4 border-b px-4 py-3 sm:px-6">
+      <div className="flex items-center gap-6">
+        <Link
+          href="/"
+          className="font-mono text-sm font-semibold tracking-widest uppercase"
+        >
+          Sixteen
+        </Link>
+        <nav className="flex items-center gap-4 text-sm">
+          <Link href="/" className="text-muted-foreground hover:text-foreground">
+            Today
+          </Link>
+          <Link
+            href="/archive"
+            className="text-muted-foreground hover:text-foreground"
+          >
+            Archive
+          </Link>
+        </nav>
+      </div>
       {clerkEnabled ? (
         <>
           <SignedIn>

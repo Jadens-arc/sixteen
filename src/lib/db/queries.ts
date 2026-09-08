@@ -9,6 +9,7 @@ import { dailyPrompts, verses, type DailyPrompt, type Verse } from "./schema";
 
 const RECENT_CONCEPTS_LIMIT = 14;
 const ARCHIVE_LIMIT = 60;
+const STREAK_SCAN_LIMIT = 400;
 
 async function recentConcepts(): Promise<string[]> {
   const rows = await db
@@ -136,7 +137,9 @@ export async function getStreak(userId: string): Promise<number> {
     .select({ promptDate: dailyPrompts.promptDate })
     .from(verses)
     .innerJoin(dailyPrompts, eq(verses.promptId, dailyPrompts.id))
-    .where(and(eq(verses.userId, userId), isNotNull(verses.completedAt)));
+    .where(and(eq(verses.userId, userId), isNotNull(verses.completedAt)))
+    .orderBy(desc(dailyPrompts.promptDate))
+    .limit(STREAK_SCAN_LIMIT);
 
   const completedDates = new Set(rows.map((row) => row.promptDate));
   if (completedDates.size === 0) return 0;

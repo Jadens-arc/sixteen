@@ -17,11 +17,13 @@ function createClient(): NeonHttpDatabase<Schema> {
   return drizzle(neon(url), { schema });
 }
 
+// Importing this module must not read the environment, so the real client is
+// built on first property access. Methods are bound to that client rather than
+// to the proxy, so drizzle's internals never see a stand-in for `this`.
 export const db = new Proxy({} as NeonHttpDatabase<Schema>, {
-  get(_target, prop, receiver) {
-    if (!instance) {
-      instance = createClient();
-    }
-    return Reflect.get(instance, prop, receiver);
+  get(_target, prop) {
+    instance ??= createClient();
+    const value = Reflect.get(instance, prop);
+    return typeof value === "function" ? value.bind(instance) : value;
   },
 });

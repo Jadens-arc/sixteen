@@ -16,7 +16,6 @@ export async function saveVerse(input: { promptId: string; body: string }): Prom
     body: input.body,
   });
 
-  revalidatePath("/");
   return verse;
 }
 
