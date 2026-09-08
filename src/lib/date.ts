@@ -19,6 +19,12 @@ export function todayInAppTimezone(): string {
   return `${year}-${month}-${day}`;
 }
 
+export function addDays(date: string, delta: number): string {
+  const [year, month, day] = date.split("-").map(Number);
+  const utcDate = new Date(Date.UTC(year, month - 1, day + delta));
+  return utcDate.toISOString().slice(0, 10);
+}
+
 export function formatPromptDate(date: string): string {
   const [year, month, day] = date.split("-").map(Number);
   const utcDate = new Date(Date.UTC(year, month - 1, day));

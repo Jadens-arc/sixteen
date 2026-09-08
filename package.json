@@ -23,8 +23,8 @@
     "clsx": "^2.1.1",
     "drizzle-orm": "^0.45.2",
     "next": "15.5.25",
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
+    "react": "19.1.4",
+    "react-dom": "19.1.4",
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.6.0",
     "zod": "^4.5.4"
@@ -46,6 +46,7 @@
     "tailwindcss": "^4",
     "tsx": "^4.23.13",
     "typescript": "^5",
+    "vite": "^8.2.2",
     "vitest": "^5.0.0"
   }
 }

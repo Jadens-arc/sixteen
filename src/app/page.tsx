@@ -1,5 +1,10 @@
 import Image from "next/image";
 
+// Phase 3 wires this page to getOrCreateTodayPrompt(), which reaches the
+// database. Marking it dynamic now keeps that change from ever running into
+// static generation at build time, when no DATABASE_URL is set yet.
+export const dynamic = "force-dynamic";
+
 export default function Home() {
   return (
     <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
