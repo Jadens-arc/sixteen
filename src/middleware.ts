@@ -15,7 +15,12 @@ const clerkConfigured = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
 
 export default clerkConfigured
   ? clerkMiddleware(async (auth, req) => {
-      if (!isPublicRoute(req)) await auth.protect();
+      if (isPublicRoute(req)) return;
+      // Without an explicit destination, a signed-out visitor gets rewritten to
+      // a 404 rather than sent to the sign-in page this app ships.
+      await auth.protect({
+        unauthenticatedUrl: new URL("/sign-in", req.url).toString(),
+      });
     })
   : () => NextResponse.next();
 
