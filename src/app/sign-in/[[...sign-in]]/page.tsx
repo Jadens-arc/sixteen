@@ -8,7 +8,7 @@ export default function SignInPage() {
   return (
     <div className="flex min-h-[calc(100vh-65px)] items-center justify-center p-6">
       {clerkEnabled ? (
-        <SignIn />
+        <SignIn fallbackRedirectUrl="/" />
       ) : (
         <p className="text-muted-foreground text-sm">
           Auth is not configured yet.
