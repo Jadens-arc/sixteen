@@ -116,14 +116,28 @@ export async function upsertVerse(input: {
   return verse;
 }
 
+// Only what the archive actually renders. Selecting the whole verse row would
+// pull every body - up to ARCHIVE_LIMIT of them - across the wire on a page
+// that never displays one.
+export interface ArchiveVerse {
+  barCount: number;
+  completedAt: Date | null;
+}
+
 export interface ArchiveEntry {
   prompt: DailyPrompt;
-  verse: Verse | null;
+  verse: ArchiveVerse | null;
 }
 
 export async function listArchive(userId: string): Promise<ArchiveEntry[]> {
   const rows = await db
-    .select({ prompt: dailyPrompts, verse: verses })
+    .select({
+      prompt: dailyPrompts,
+      // barCount leads deliberately: drizzle decides whether an unmatched left
+      // join collapses to null from the first selected column of the joined
+      // table, so that column has to be one that is NOT NULL when a row exists.
+      verse: { barCount: verses.barCount, completedAt: verses.completedAt },
+    })
     .from(dailyPrompts)
     .leftJoin(verses, and(eq(verses.promptId, dailyPrompts.id), eq(verses.userId, userId)))
     .orderBy(desc(dailyPrompts.promptDate))

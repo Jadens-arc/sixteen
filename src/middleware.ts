@@ -1,5 +1,5 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 
 const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
@@ -13,6 +13,22 @@ const isPublicRoute = createRouteMatcher([
 // route, including the cron endpoint. Fall through untouched until keys land.
 const clerkConfigured = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
 
+// Stepping aside leaves every route unauthenticated. Outside production that
+// is the intended bootstrap state; in production it must never be reachable by
+// accident - a key removed from the dashboard, or a deploy that predates one
+// being added, would otherwise silently turn the whole app public. Nothing can
+// actually read or write a verse in that state (requireUserId() throws once
+// clerkMiddleware() hasn't run), but that is Clerk erroring rather than this
+// app refusing, so refuse here explicitly.
+function unconfigured(request: NextRequest): NextResponse {
+  if (isPublicRoute(request)) return NextResponse.next();
+
+  return new NextResponse(
+    "Authentication is not configured. Set NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY, then redeploy.",
+    { status: 503, headers: { "content-type": "text/plain; charset=utf-8" } },
+  );
+}
+
 export default clerkConfigured
   ? clerkMiddleware(async (auth, req) => {
       if (isPublicRoute(req)) return;
@@ -22,7 +38,9 @@ export default clerkConfigured
         unauthenticatedUrl: new URL("/sign-in", req.url).toString(),
       });
     })
-  : () => NextResponse.next();
+  : process.env.NODE_ENV === "production"
+    ? unconfigured
+    : () => NextResponse.next();
 
 export const config = {
   matcher: [
