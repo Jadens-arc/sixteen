@@ -94,7 +94,14 @@ rather than served**: with no publishable key, `src/middleware.ts` returns
 that was never added - or one later removed from the dashboard - cannot
 quietly turn the whole app public. Outside production the keyless state stays
 browsable, and nothing can read or write a verse in it either way
-(`requireUserId()` throws, and the page renders a setup notice).
+(`getUserId()` throws when `clerkMiddleware()` hasn't run, and the page
+renders a setup notice).
+
+`/` is exempt from that `503` because it is a public route, but it serves
+nothing in the keyless state either: `getUserId()` throws before the prompt
+loads, so the page renders the same setup notice. The exemption changes what
+a misconfigured deploy shows on the home page - a notice instead of a plain
+`503` - not what it will hand out.
 
 ## What is public
 
