@@ -1,14 +1,9 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
-import {
-  ClerkProvider,
-  SignedIn,
-  SignedOut,
-  SignInButton,
-  UserButton,
-} from "@clerk/nextjs";
+import { ClerkProvider, SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
 
+import { AuthButtons } from "@/components/auth-buttons";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
@@ -33,6 +28,12 @@ export const metadata: Metadata = {
 // rather than crash the build or the page.
 const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
 
+const archiveLink = (
+  <Link href="/archive" className="text-muted-foreground hover:text-foreground">
+    Archive
+  </Link>
+);
+
 function Header() {
   return (
     <header className="flex items-center justify-between gap-4 border-b px-4 py-3 sm:px-6">
@@ -47,12 +48,11 @@ function Header() {
           <Link href="/" className="text-muted-foreground hover:text-foreground">
             Today
           </Link>
-          <Link
-            href="/archive"
-            className="text-muted-foreground hover:text-foreground"
-          >
-            Archive
-          </Link>
+          {/* The archive holds a visitor's own verses, so it stays behind
+              sign-in. Linking it while signed out would only bounce them to
+              the sign-in page, which is what reading the day's prompt without
+              an account is meant to avoid. */}
+          {clerkEnabled ? <SignedIn>{archiveLink}</SignedIn> : archiveLink}
         </nav>
       </div>
       {clerkEnabled ? (
@@ -60,8 +60,9 @@ function Header() {
           <SignedIn>
             <UserButton afterSignOutUrl="/" />
           </SignedIn>
+          {/* Where the avatar sits once there is one. */}
           <SignedOut>
-            <SignInButton mode="modal" />
+            <AuthButtons />
           </SignedOut>
         </>
       ) : (

@@ -1,7 +1,13 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse, type NextRequest } from "next/server";
 
+// "/" is public so anyone can read the day's prompt without an account; the
+// sign-up prompt comes when they click the pad to write. Note that a server
+// action posts back to the page it was called from, so this also stops the
+// middleware from guarding the actions in src/actions/verse.ts - each of those
+// calls requireUserId() itself, which is what actually keeps a verse private.
 const isPublicRoute = createRouteMatcher([
+  "/",
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/api/cron(.*)",
