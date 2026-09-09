@@ -65,7 +65,7 @@ See `.env.example` for the same list with inline comments.
 | Variable | Required | Notes |
 | --- | --- | --- |
 | `DATABASE_URL` | Yes | Neon Postgres connection string (pooled). |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Yes | Clerk publishable key. Without it, the app builds and boots in a keyless state: no sign-in, no `<ClerkProvider>`, and pages that need a signed-in user render a setup notice. |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Yes | Clerk publishable key. Without it, the app builds and boots in a keyless state: no sign-in and no `<ClerkProvider>`. In production every route except `/sign-in`, `/sign-up` and `/api/cron` then returns `503`; outside production those pages render a setup notice instead. |
 | `CLERK_SECRET_KEY` | Yes | Clerk secret key. |
 | `NEXT_PUBLIC_CLERK_SIGN_IN_URL` | No | Not needed. `<ClerkProvider>` sets `signInUrl="/sign-in"` in `src/app/layout.tsx`; set this only to move the page elsewhere. |
 | `NEXT_PUBLIC_CLERK_SIGN_UP_URL` | No | Not needed, as above for `/sign-up`. |
@@ -83,13 +83,21 @@ dashboard afterward.
 The keyless state is a bootstrap convenience, not a mode to run in. Clerk's
 middleware throws on every request when no publishable key is present, so
 `src/middleware.ts` steps aside entirely until one is configured, which
-leaves every route unauthenticated. Nothing can read or write a verse in
-that state (`requireUserId()` throws, and the page renders a setup notice),
-but set the Clerk keys before pointing the app at a database you care
-about. `/` and `/archive` are `force-dynamic` so they're never
-prerendered at build time, and a missing `DATABASE_URL` (or any other setup
-problem) surfaces as an in-app notice at request time instead of a stack
-trace.
+leaves every route unauthenticated. **In production that state is refused
+rather than served**: with no publishable key, `src/middleware.ts` returns
+`503` for every route except `/sign-in`, `/sign-up` and `/api/cron`, so a key
+that was never added - or one later removed from the dashboard - cannot
+quietly turn the whole app public. Outside production the keyless state stays
+browsable, and nothing can read or write a verse in it either way
+(`requireUserId()` throws, and the page renders a setup notice).
+
+`/api/cron` deliberately stays reachable while unconfigured: it carries no
+Clerk session by design and is guarded by `CRON_SECRET` instead, so the daily
+prompt job keeps running through a Clerk misconfiguration.
+
+`/` and `/archive` are `force-dynamic` so they're never prerendered at build
+time, and a missing `DATABASE_URL` (or any other setup problem) surfaces as an
+in-app notice at request time instead of a stack trace.
 
 ## A note on Clerk keys and domains
 
@@ -151,7 +159,9 @@ and is race-safe if two requests land at once.
 
 1. Import the repository into Vercel. The Next.js app lives at the repo
    root, so no root-directory configuration is needed.
-2. Deploy. The build succeeds with no environment variables set.
+2. Deploy. The build succeeds with no environment variables set, though the
+   deployed app returns `503` on every protected route until step 3 and the
+   redeploy in step 5.
 3. In the project's Vercel dashboard, add the environment variables from the
    table above - at minimum `DATABASE_URL`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`,
    `CLERK_SECRET_KEY`, and `CRON_SECRET`.

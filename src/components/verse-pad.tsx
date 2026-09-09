@@ -7,7 +7,7 @@ import { completeVerse, saveVerse } from "@/actions/verse";
 import { BarMeter } from "@/components/bar-meter";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { BAR_TARGET, countBars } from "@/lib/bars";
+import { BAR_TARGET, MAX_VERSE_LENGTH, countBars } from "@/lib/bars";
 import { cn } from "@/lib/utils";
 
 const AUTOSAVE_DELAY_MS = 800;
@@ -88,6 +88,7 @@ export function VersePad({
         value={body}
         onChange={(e) => setBody(e.target.value)}
         readOnly={isDone}
+        maxLength={MAX_VERSE_LENGTH}
         placeholder="Bar one goes here."
         aria-label="Verse"
         className="min-h-64 resize-none font-mono text-base leading-relaxed sm:min-h-80"
