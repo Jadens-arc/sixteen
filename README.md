@@ -10,6 +10,11 @@ consecutive days completed.
 The prompt is shared by everyone who uses the app (one per calendar day,
 Wordle-style); each signed-in user keeps their own verse against it.
 
+The home page reads without an account: anyone can see the day's prompt, and
+the ask to sign up comes when they click the pad to start writing. Everything
+that belongs to a person - the verse, the archive, the streak - still needs a
+session.
+
 ## Stack
 
 - Next.js 15 (App Router) and React 19, TypeScript in strict mode
@@ -65,7 +70,7 @@ See `.env.example` for the same list with inline comments.
 | Variable | Required | Notes |
 | --- | --- | --- |
 | `DATABASE_URL` | Yes | Neon Postgres connection string (pooled). |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Yes | Clerk publishable key. Without it, the app builds and boots in a keyless state: no sign-in and no `<ClerkProvider>`. In production every route except `/sign-in`, `/sign-up` and `/api/cron` then returns `503`; outside production those pages render a setup notice instead. |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Yes | Clerk publishable key. Without it, the app builds and boots in a keyless state: no sign-in and no `<ClerkProvider>`. In production every route except `/`, `/sign-in`, `/sign-up` and `/api/cron` then returns `503`; outside production those pages render a setup notice instead. |
 | `CLERK_SECRET_KEY` | Yes | Clerk secret key. |
 | `NEXT_PUBLIC_CLERK_SIGN_IN_URL` | No | Not needed. `<ClerkProvider>` sets `signInUrl="/sign-in"` in `src/app/layout.tsx`; set this only to move the page elsewhere. |
 | `NEXT_PUBLIC_CLERK_SIGN_UP_URL` | No | Not needed, as above for `/sign-up`. |
@@ -85,11 +90,25 @@ middleware throws on every request when no publishable key is present, so
 `src/middleware.ts` steps aside entirely until one is configured, which
 leaves every route unauthenticated. **In production that state is refused
 rather than served**: with no publishable key, `src/middleware.ts` returns
-`503` for every route except `/sign-in`, `/sign-up` and `/api/cron`, so a key
+`503` for every route except `/`, `/sign-in`, `/sign-up` and `/api/cron`, so a key
 that was never added - or one later removed from the dashboard - cannot
 quietly turn the whole app public. Outside production the keyless state stays
 browsable, and nothing can read or write a verse in it either way
 (`requireUserId()` throws, and the page renders a setup notice).
+
+## What is public
+
+`src/middleware.ts` lists the routes that don't require a session: `/`,
+`/sign-in`, `/sign-up` and `/api/cron`. `/` is public so a visitor can read
+the day's prompt before deciding to sign up - `src/app/page.tsx` calls
+`getUserId()` rather than `requireUserId()` and swaps the pad for
+`<SignedOutPad />`, which opens Clerk's sign-up modal on the first click.
+
+A server action posts back to the page it was called from, so the actions in
+`src/actions/verse.ts` are not covered by the middleware on `/` either. They
+each call `requireUserId()` themselves - that check, not the route matcher, is
+what keeps one person's verse out of another's hands, and it is why the
+middleware's list can widen without widening what a signed-out caller can do.
 
 `/api/cron` deliberately stays reachable while unconfigured: it carries no
 Clerk session by design and is guarded by `CRON_SECRET` instead, so the daily
