@@ -1,10 +1,21 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
 import { ClerkProvider, SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
+import { Analytics } from "@vercel/analytics/next";
 
 import { AuthButtons } from "@/components/auth-buttons";
+import { JsonLd } from "@/components/json-ld";
 import { Toaster } from "@/components/ui/sonner";
+import {
+  siteDescription,
+  siteKeywords,
+  siteName,
+  siteTagline,
+  siteUrl,
+  twitterHandle,
+} from "@/lib/site";
+import { siteGraph } from "@/lib/structured-data";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -18,8 +29,64 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Sixteen",
-  description: "One prompt a day. Sixteen bars against the clock.",
+  // Everything relative below (canonicals, the OG image, the manifest) is
+  // resolved against this, and Open Graph tags are invalid unless absolute.
+  metadataBase: new URL(siteUrl),
+  title: {
+    // What a search result shows: what the thing is, then the brand. The
+    // template keeps every other page's title in the same shape without
+    // repeating the suffix by hand.
+    default: `Sixteen - A free daily rap writing prompt, 16 bars at a time`,
+    template: `%s | ${siteName}`,
+  },
+  description: siteDescription,
+  keywords: [...siteKeywords],
+  applicationName: siteName,
+  category: "education",
+  authors: [{ name: siteName, url: siteUrl }],
+  creator: siteName,
+  publisher: siteName,
+  openGraph: {
+    type: "website",
+    url: "/",
+    siteName,
+    locale: "en_US",
+    title: `Sixteen - A free daily rap writing prompt`,
+    description: siteDescription,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: `Sixteen - A free daily rap writing prompt`,
+    description: siteDescription,
+    ...(twitterHandle ? { creator: twitterHandle, site: twitterHandle } : {}),
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      // Without these three, Google truncates the snippet and shows a
+      // thumbnail-sized image. They are the difference between a listing that
+      // answers the query in place and one that doesn't.
+      "max-snippet": -1,
+      "max-image-preview": "large",
+      "max-video-preview": -1,
+    },
+  },
+  // Phone numbers and dates get auto-linked by iOS otherwise, which mangles
+  // bars that happen to look like one.
+  formatDetection: { telephone: false, date: false, address: false },
+  manifest: "/manifest.webmanifest",
+};
+
+export const viewport: Viewport = {
+  // The app is dark regardless of system preference (see globals.css), so the
+  // browser chrome should be told once rather than guess from the first paint.
+  themeColor: "#0d0d0d",
+  colorScheme: "dark",
+  width: "device-width",
+  initialScale: 1,
 };
 
 // Clerk's provider and components render nothing useful without a publishable
@@ -49,7 +116,7 @@ function Header() {
         >
           Sixteen
         </Link>
-        <nav className="flex items-center gap-4 text-sm">
+        <nav aria-label="Main" className="flex items-center gap-4 text-sm">
           <Link href="/" className="text-muted-foreground hover:text-foreground">
             Today
           </Link>
@@ -79,15 +146,41 @@ function Header() {
   );
 }
 
+function Footer() {
+  return (
+    <footer className="text-muted-foreground mx-auto flex w-full max-w-2xl flex-col gap-2 px-4 py-10 text-xs sm:px-8">
+      <p>
+        <strong className="text-foreground font-semibold">Sixteen</strong> -{" "}
+        {siteTagline} A free daily rap writing prompt with a concept, a rhyme
+        scheme, a pocket, constraints and a word bank.
+      </p>
+      <nav aria-label="Footer" className="flex flex-wrap gap-4">
+        <Link href="/" className="hover:text-foreground">
+          Today&rsquo;s prompt
+        </Link>
+        <Link href="/#how-it-works" className="hover:text-foreground">
+          How it works
+        </Link>
+        <Link href="/#faq" className="hover:text-foreground">
+          FAQ
+        </Link>
+      </nav>
+    </footer>
+  );
+}
+
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en-US">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <Header />
         {children}
+        <Footer />
         <Toaster />
+        <JsonLd data={siteGraph()} />
+        <Analytics />
       </body>
     </html>
   );

@@ -8,8 +8,11 @@ import { requireUserId } from "@/lib/auth";
 import { formatWrittenAt } from "@/lib/date";
 import { getNotebookVerse } from "@/lib/db/queries";
 import type { Verse } from "@/lib/db/schema";
+import { privatePageMetadata } from "@/lib/metadata";
 
 export const dynamic = "force-dynamic";
+
+export const metadata = privatePageMetadata("Notebook verse");
 
 export default async function NotebookVersePage({
   params,

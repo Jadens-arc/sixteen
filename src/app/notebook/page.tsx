@@ -6,10 +6,13 @@ import { SetupNotice } from "@/components/setup-notice";
 import { Button } from "@/components/ui/button";
 import { requireUserId } from "@/lib/auth";
 import { listNotebook, type NotebookEntry } from "@/lib/db/queries";
+import { privatePageMetadata } from "@/lib/metadata";
 import { normalizeSearchQuery } from "@/lib/search";
 
 // Reads a person's own writing on every request, like every other page here.
 export const dynamic = "force-dynamic";
+
+export const metadata = privatePageMetadata("Notebook");
 
 export default async function NotebookPage({
   searchParams,

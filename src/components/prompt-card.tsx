@@ -4,7 +4,6 @@ import {
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { formatPromptDate } from "@/lib/date";
@@ -45,9 +44,17 @@ export function PromptCard({ prompt }: { prompt: DailyPrompt }) {
         <CardDescription className="font-mono">
           {formatPromptDate(prompt.promptDate)}
         </CardDescription>
-        <CardTitle className="text-xl leading-snug font-semibold">
+        {/* The concept is the heading of this card in every sense, so it is
+            an <h2> rather than the styled div <CardTitle> would render.
+            Carrying the same data-slot keeps the card's grid styling; being a
+            real heading is what gives the page an outline a crawler, a screen
+            reader and an answer engine can all follow. */}
+        <h2
+          data-slot="card-title"
+          className="text-xl leading-snug font-semibold"
+        >
           {prompt.concept}
-        </CardTitle>
+        </h2>
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
         <p className="text-sm leading-relaxed">{prompt.scenario}</p>
