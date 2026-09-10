@@ -35,10 +35,18 @@ export function VersePad({
   const [status, setStatus] = useState<SaveStatus>("idle");
   const [completedAt, setCompletedAt] = useState(initialCompletedAt);
   const [isCompleting, setIsCompleting] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
 
   const barCount = countBars(body);
   const isDone = Boolean(completedAt);
   const canComplete = barCount >= BAR_TARGET && !isDone;
+
+  // A finished verse reads as finished, but nothing about it is frozen: the
+  // pad reopens on demand so a weak bar can still be fixed a week later. The
+  // autosave that follows leaves completedAt alone (see upsertVerse), so
+  // editing a verse never takes back the day it completed.
+  const isLocked = isDone && !isEditing;
+  const statusLabel = isLocked ? "Done - reopen to edit" : STATUS_LABEL[status];
 
   useEffect(() => {
     if (body === savedBody) return;
@@ -80,14 +88,14 @@ export function VersePad({
             status === "error" ? "text-destructive" : "text-muted-foreground",
           )}
         >
-          {STATUS_LABEL[status]}
+          {statusLabel}
         </span>
       </div>
 
       <Textarea
         value={body}
         onChange={(e) => setBody(e.target.value)}
-        readOnly={isDone}
+        readOnly={isLocked}
         maxLength={MAX_VERSE_LENGTH}
         placeholder="Bar one goes here."
         aria-label="Verse"
@@ -98,9 +106,15 @@ export function VersePad({
         <span className="text-muted-foreground font-mono text-sm">
           {Math.min(barCount, BAR_TARGET)} / {BAR_TARGET} bars
         </span>
-        <Button onClick={handleComplete} disabled={!canComplete || isCompleting}>
-          {isDone ? "Done" : "Mark 16 done"}
-        </Button>
+        {isDone ? (
+          <Button variant="outline" onClick={() => setIsEditing(!isEditing)}>
+            {isEditing ? "Done editing" : "Edit"}
+          </Button>
+        ) : (
+          <Button onClick={handleComplete} disabled={!canComplete || isCompleting}>
+            Mark 16 done
+          </Button>
+        )}
       </div>
     </div>
   );

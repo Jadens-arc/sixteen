@@ -36,3 +36,16 @@ export function formatPromptDate(date: string): string {
     day: "numeric",
   }).format(utcDate);
 }
+
+// A prompt date arrives from the URL on the archive detail route, where it is
+// used to look a row up. Checking the shape *and* that the parts survive a
+// round trip rejects both "yesterday" and "2026-02-31" before either reaches
+// the database, where an invalid date is an error rather than a miss.
+export function isPromptDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+
+  const [year, month, day] = value.split("-").map(Number);
+  const utcDate = new Date(Date.UTC(year, month - 1, day));
+
+  return utcDate.toISOString().slice(0, 10) === value;
+}

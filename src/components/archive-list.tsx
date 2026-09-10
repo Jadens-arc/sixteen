@@ -1,9 +1,12 @@
+import Link from "next/link";
+
 import { BarMeter } from "@/components/bar-meter";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BAR_TARGET } from "@/lib/bars";
 import { formatPromptDate } from "@/lib/date";
 import type { ArchiveEntry } from "@/lib/db/queries";
+import { highlightSegments } from "@/lib/search";
 
 function VerseStatus({ entry }: { entry: ArchiveEntry }) {
   if (!entry.verse || entry.verse.barCount === 0) {
@@ -19,11 +22,72 @@ function VerseStatus({ entry }: { entry: ArchiveEntry }) {
   );
 }
 
-export function ArchiveList({ entries }: { entries: ArchiveEntry[] }) {
+// Shows a searcher what the row matched on, without the highlight leaking into
+// the text itself - the segments are the same string, split.
+function Highlighted({ text, query }: { text: string; query: string | null }) {
+  return (
+    <>
+      {highlightSegments(text, query).map((segment, i) =>
+        segment.match ? (
+          <mark key={i} className="bg-primary/20 text-foreground rounded-sm">
+            {segment.text}
+          </mark>
+        ) : (
+          <span key={i}>{segment.text}</span>
+        ),
+      )}
+    </>
+  );
+}
+
+function Entry({ entry, query }: { entry: ArchiveEntry; query: string | null }) {
+  const excerpt = entry.excerpt?.trim();
+
+  return (
+    <Link
+      href={`/archive/${entry.prompt.promptDate}`}
+      className="focus-visible:ring-ring/50 block rounded-xl outline-none focus-visible:ring-[3px]"
+    >
+      <Card className="hover:border-ring transition-colors">
+        <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
+          <div className="flex flex-col gap-1">
+            <CardTitle className="text-base font-normal">
+              <Highlighted text={entry.prompt.concept} query={query} />
+            </CardTitle>
+            <p className="text-muted-foreground font-mono text-xs">
+              {formatPromptDate(entry.prompt.promptDate)}
+            </p>
+          </div>
+          <VerseStatus entry={entry} />
+        </CardHeader>
+        {entry.verse && entry.verse.barCount > 0 ? (
+          <CardContent className="flex flex-col gap-3">
+            <BarMeter barCount={entry.verse.barCount} />
+            {excerpt ? (
+              <p className="text-muted-foreground line-clamp-2 font-mono text-xs leading-relaxed whitespace-pre-line">
+                <Highlighted text={excerpt} query={query} />
+              </p>
+            ) : null}
+          </CardContent>
+        ) : null}
+      </Card>
+    </Link>
+  );
+}
+
+export function ArchiveList({
+  entries,
+  query = null,
+}: {
+  entries: ArchiveEntry[];
+  query?: string | null;
+}) {
   if (entries.length === 0) {
     return (
       <p className="text-muted-foreground text-sm">
-        No prompts yet. Check back tomorrow.
+        {query
+          ? `Nothing in the archive matches "${query}".`
+          : "No prompts yet. Check back tomorrow."}
       </p>
     );
   }
@@ -32,24 +96,7 @@ export function ArchiveList({ entries }: { entries: ArchiveEntry[] }) {
     <ul className="flex flex-col gap-3">
       {entries.map((entry) => (
         <li key={entry.prompt.id}>
-          <Card>
-            <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
-              <div className="flex flex-col gap-1">
-                <CardTitle className="text-base font-normal">
-                  {entry.prompt.concept}
-                </CardTitle>
-                <p className="text-muted-foreground font-mono text-xs">
-                  {formatPromptDate(entry.prompt.promptDate)}
-                </p>
-              </div>
-              <VerseStatus entry={entry} />
-            </CardHeader>
-            {entry.verse && entry.verse.barCount > 0 ? (
-              <CardContent>
-                <BarMeter barCount={entry.verse.barCount} />
-              </CardContent>
-            ) : null}
-          </Card>
+          <Entry entry={entry} query={query} />
         </li>
       ))}
     </ul>
