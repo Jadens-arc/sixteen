@@ -32,6 +32,23 @@ describe("PromptCard", () => {
     expect(screen.getByText(prompt.pocket)).toBeInTheDocument();
   });
 
+  it("keeps the rhyme scheme, pocket and constraints closed under hard mode", () => {
+    const { container } = render(<PromptCard prompt={prompt} />);
+
+    const details = container.querySelector("details");
+    expect(details).not.toBeNull();
+    expect(details).not.toHaveAttribute("open");
+    expect(screen.getByText("Hard mode")).toBeInTheDocument();
+
+    for (const text of [
+      prompt.rhymeScheme,
+      prompt.pocket,
+      ...prompt.constraints,
+    ]) {
+      expect(details).toContainElement(screen.getByText(text));
+    }
+  });
+
   it("renders every constraint", () => {
     render(<PromptCard prompt={prompt} />);
     for (const constraint of prompt.constraints) {
