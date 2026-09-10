@@ -202,6 +202,20 @@ redirect to an `accounts.<...>.vercel.app` host that does not resolve.
 Switch to production keys once a custom domain is attached to the project and
 verified in the Clerk dashboard.
 
+## Theming Clerk
+
+Clerk's cards, user menu and modals come from its own stylesheet, so nothing
+in `globals.css` reaches them - by default they render as a bright white card
+in the middle of a dark page. `src/lib/clerk-appearance.ts` mirrors the app's
+tokens into Clerk's `appearance` config, and `ClerkProvider` in
+`src/app/layout.tsx` applies it to every Clerk surface at once, the sign-in
+modals included.
+
+Clerk's colour parser takes hex and rgb but not oklch, so each value in that
+file is the sRGB equivalent of a token in `globals.css`, converted by hand and
+commented with the token it came from. Changing a colour in `globals.css`
+means converting it and changing it there too.
+
 ## Local setup
 
 ```bash

@@ -5,6 +5,7 @@ import { ClerkProvider, SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
 
 import { AuthButtons } from "@/components/auth-buttons";
 import { Toaster } from "@/components/ui/sonner";
+import { clerkAppearance } from "@/lib/clerk-appearance";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -106,6 +107,7 @@ export default function RootLayout({
   // Portal at accounts.<domain> instead of the sign-in page this app ships.
   return (
     <ClerkProvider
+      appearance={clerkAppearance}
       signInUrl="/sign-in"
       signUpUrl="/sign-up"
       signInFallbackRedirectUrl="/"
