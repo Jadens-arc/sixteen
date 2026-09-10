@@ -8,21 +8,28 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: mocks.replace }),
 }));
 
-const { ArchiveSearch, archiveHref } = await import("@/components/archive-search");
+const { SearchField, searchHref } = await import("@/components/search-field");
 
 const DEBOUNCE_MS = 300;
+const PLACEHOLDER = "Search your verses and prompts";
 
-describe("archiveHref", () => {
+describe("searchHref", () => {
   it("drops the parameter for an empty query", () => {
-    expect(archiveHref("   ")).toBe("/archive");
+    expect(searchHref("/archive", "   ")).toBe("/archive");
   });
 
   it("encodes what a person typed", () => {
-    expect(archiveHref("pawn shop & clock")).toBe("/archive?q=pawn%20shop%20%26%20clock");
+    expect(searchHref("/archive", "pawn shop & clock")).toBe(
+      "/archive?q=pawn%20shop%20%26%20clock",
+    );
+  });
+
+  it("keeps each list searching its own page", () => {
+    expect(searchHref("/notebook", "hook")).toBe("/notebook?q=hook");
   });
 });
 
-describe("ArchiveSearch", () => {
+describe("SearchField", () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
   });
@@ -32,11 +39,15 @@ describe("ArchiveSearch", () => {
     vi.clearAllMocks();
   });
 
+  function Field({ query }: { query: string }) {
+    return <SearchField path="/archive" query={query} placeholder={PLACEHOLDER} />;
+  }
+
   it("puts the typed query in the URL once typing stops", async () => {
     const user = userEvent.setup({ delay: null });
-    render(<ArchiveSearch query="" />);
+    render(<Field query="" />);
 
-    await user.type(screen.getByLabelText("Search the archive"), "pawn");
+    await user.type(screen.getByLabelText(PLACEHOLDER), "pawn");
     expect(mocks.replace).not.toHaveBeenCalled();
 
     await act(async () => {
@@ -47,7 +58,7 @@ describe("ArchiveSearch", () => {
   });
 
   it("does not navigate when the field already matches the URL", async () => {
-    render(<ArchiveSearch query="pawn" />);
+    render(<Field query="pawn" />);
 
     await act(async () => {
       vi.advanceTimersByTime(DEBOUNCE_MS);
@@ -58,7 +69,7 @@ describe("ArchiveSearch", () => {
 
   it("clears back to the unsearched archive", async () => {
     const user = userEvent.setup({ delay: null });
-    render(<ArchiveSearch query="pawn" />);
+    render(<Field query="pawn" />);
 
     await user.click(screen.getByRole("button", { name: "Clear" }));
     await act(async () => {
@@ -69,16 +80,16 @@ describe("ArchiveSearch", () => {
   });
 
   it("offers nothing to clear when the field is empty", () => {
-    render(<ArchiveSearch query="" />);
+    render(<Field query="" />);
 
     expect(screen.queryByRole("button", { name: "Clear" })).not.toBeInTheDocument();
   });
 
   it("submits without waiting for the debounce", async () => {
     const user = userEvent.setup({ delay: null });
-    render(<ArchiveSearch query="" />);
+    render(<Field query="" />);
 
-    const input = screen.getByLabelText("Search the archive");
+    const input = screen.getByLabelText(PLACEHOLDER);
     await user.type(input, "clock{enter}");
 
     expect(mocks.replace).toHaveBeenCalledWith("/archive?q=clock", { scroll: false });

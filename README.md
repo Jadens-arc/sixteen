@@ -6,6 +6,8 @@ a rhyme scheme, a pocket (flow/tempo), a handful of constraints, and a word
 bank - and gives a pad to write the verse against it, with a bar counter and
 autosave. Past prompts and verses live in a searchable archive - any day can
 be reopened and rewritten - alongside a streak of consecutive days completed.
+A notebook holds loose verses that answer to no prompt at all, for when a
+verse shows up on its own schedule.
 
 The prompt is shared by everyone who uses the app (one per calendar day,
 Wordle-style); each signed-in user keeps their own verse against it.
@@ -97,6 +99,34 @@ Two details are worth knowing:
 The verse body is joined on the user id before it is matched, so a search can
 only ever hit your own writing.
 
+## The notebook
+
+`/notebook` is the same pad with nothing in front of it: no prompt, no
+16-bar target, no streak - somewhere to put bars that arrived on their own.
+It has its own search box over the same machinery as the archive's.
+
+Loose verses are `verses` rows with a null `prompt_id`, not a table of their
+own, so one kind of thing is stored one way. Two properties make that work:
+
+- Postgres compares unique keys as `NULLS DISTINCT`, so
+  `unique (prompt_id, user_id)` still allows one verse per person per prompt
+  while letting a person keep as many loose verses as they like.
+- Every query that reaches the daily verses joins through `prompt_id`, so a
+  null can never appear in the archive, the streak, or a day's pad. Every
+  notebook query pairs `is null (prompt_id)` with the reader's own user id,
+  so a daily verse can't be edited or deleted through the notebook either.
+
+A blank page writes nothing. `/notebook/new` holds no row at all; the first
+autosave creates one and swaps the URL for the verse's own, so opening the
+notebook and thinking better of it leaves nothing behind. Verses are named in
+the list by their opening bar rather than by a title - being asked to name a
+jotting is being asked to stop writing - and a verse emptied of its text keeps
+its place in the list, under a stand-in name, so it stays reachable to delete.
+
+Deleting is the one destructive thing in the app, so it asks first, and
+`deleteVerseNote()` scopes the delete to the signed-in user rather than
+trusting the id it was handed.
+
 ## Environment variables
 
 See `.env.example` for the same list with inline comments.
@@ -140,7 +170,8 @@ a misconfigured deploy shows on the home page - a notice instead of a plain
 ## What is public
 
 `src/middleware.ts` lists the routes that don't require a session: `/`,
-`/sign-in`, `/sign-up` and `/api/cron`. `/` is public so a visitor can read
+`/sign-in`, `/sign-up` and `/api/cron`. Everything else - the archive and the
+whole notebook included - needs one. `/` is public so a visitor can read
 the day's prompt before deciding to sign up - `src/app/page.tsx` calls
 `getUserId()` rather than `requireUserId()` and swaps the pad for
 `<SignedOutPad />`, which opens Clerk's sign-up modal on the first click.
@@ -155,8 +186,8 @@ middleware's list can widen without widening what a signed-out caller can do.
 Clerk session by design and is guarded by `CRON_SECRET` instead, so the daily
 prompt job keeps running through a Clerk misconfiguration.
 
-`/`, `/archive` and `/archive/<date>` are `force-dynamic` so they're never
-prerendered at build time, and a missing `DATABASE_URL` (or any other setup problem) surfaces as an
+`/`, `/archive`, `/archive/<date>` and every `/notebook` route are
+`force-dynamic` so they're never prerendered at build time, and a missing `DATABASE_URL` (or any other setup problem) surfaces as an
 in-app notice at request time instead of a stack trace.
 
 ## A note on Clerk keys and domains

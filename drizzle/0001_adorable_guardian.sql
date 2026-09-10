@@ -1,0 +1,2 @@
+ALTER TABLE "verses" ALTER COLUMN "prompt_id" DROP NOT NULL;--> statement-breakpoint
+CREATE INDEX "verses_notebook_idx" ON "verses" USING btree ("user_id","updated_at" DESC NULLS LAST) WHERE "verses"."prompt_id" is null;

@@ -37,6 +37,18 @@ export function formatPromptDate(date: string): string {
   }).format(utcDate);
 }
 
+// Notebook verses are stamped with a moment rather than issued for a day, so
+// they are read back in the app's timezone - the same clock that decides which
+// day a prompt belongs to.
+export function formatWrittenAt(value: Date): string {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: appTimezone(),
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(value);
+}
+
 // A prompt date arrives from the URL on the archive detail route, where it is
 // used to look a row up. Checking the shape *and* that the parts survive a
 // round trip rejects both "yesterday" and "2026-02-31" before either reaches

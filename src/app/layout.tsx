@@ -28,10 +28,15 @@ export const metadata: Metadata = {
 // rather than crash the build or the page.
 const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
 
-const archiveLink = (
-  <Link href="/archive" className="text-muted-foreground hover:text-foreground">
-    Archive
-  </Link>
+const signedInLinks = (
+  <>
+    <Link href="/archive" className="text-muted-foreground hover:text-foreground">
+      Archive
+    </Link>
+    <Link href="/notebook" className="text-muted-foreground hover:text-foreground">
+      Notebook
+    </Link>
+  </>
 );
 
 function Header() {
@@ -48,11 +53,11 @@ function Header() {
           <Link href="/" className="text-muted-foreground hover:text-foreground">
             Today
           </Link>
-          {/* The archive holds a visitor's own verses, so it stays behind
-              sign-in. Linking it while signed out would only bounce them to
-              the sign-in page, which is what reading the day's prompt without
-              an account is meant to avoid. */}
-          {clerkEnabled ? <SignedIn>{archiveLink}</SignedIn> : archiveLink}
+          {/* The archive and the notebook hold a visitor's own verses, so
+              they stay behind sign-in. Linking them while signed out would
+              only bounce them to the sign-in page, which is what reading the
+              day's prompt without an account is meant to avoid. */}
+          {clerkEnabled ? <SignedIn>{signedInLinks}</SignedIn> : signedInLinks}
         </nav>
       </div>
       {clerkEnabled ? (

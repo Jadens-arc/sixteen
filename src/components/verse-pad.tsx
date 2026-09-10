@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { completeVerse, saveVerse } from "@/actions/verse";
@@ -8,18 +8,8 @@ import { BarMeter } from "@/components/bar-meter";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { BAR_TARGET, MAX_VERSE_LENGTH, countBars } from "@/lib/bars";
+import { SAVE_STATUS_LABEL, useAutosave } from "@/lib/use-autosave";
 import { cn } from "@/lib/utils";
-
-const AUTOSAVE_DELAY_MS = 800;
-
-type SaveStatus = "idle" | "saving" | "saved" | "error";
-
-const STATUS_LABEL: Record<SaveStatus, string> = {
-  idle: "Autosaves as you write",
-  saving: "Saving",
-  saved: "Saved",
-  error: "Not saved - keep writing, it will retry",
-};
 
 export function VersePad({
   promptId,
@@ -31,8 +21,6 @@ export function VersePad({
   initialCompletedAt: string | null;
 }) {
   const [body, setBody] = useState(initialBody);
-  const [savedBody, setSavedBody] = useState(initialBody);
-  const [status, setStatus] = useState<SaveStatus>("idle");
   const [completedAt, setCompletedAt] = useState(initialCompletedAt);
   const [isCompleting, setIsCompleting] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -46,25 +34,16 @@ export function VersePad({
   // autosave that follows leaves completedAt alone (see upsertVerse), so
   // editing a verse never takes back the day it completed.
   const isLocked = isDone && !isEditing;
-  const statusLabel = isLocked ? "Done - reopen to edit" : STATUS_LABEL[status];
 
-  useEffect(() => {
-    if (body === savedBody) return;
+  const status = useAutosave({
+    value: body,
+    save: async (next) => {
+      await saveVerse({ promptId, body: next });
+    },
+    onError: () => toast.error("Could not save your verse. Check your connection."),
+  });
 
-    setStatus("saving");
-    const timer = setTimeout(async () => {
-      try {
-        await saveVerse({ promptId, body });
-        setSavedBody(body);
-        setStatus("saved");
-      } catch {
-        setStatus("error");
-        toast.error("Could not save your verse. Check your connection.");
-      }
-    }, AUTOSAVE_DELAY_MS);
-
-    return () => clearTimeout(timer);
-  }, [body, promptId, savedBody]);
+  const statusLabel = isLocked ? "Done - reopen to edit" : SAVE_STATUS_LABEL[status];
 
   async function handleComplete() {
     setIsCompleting(true);

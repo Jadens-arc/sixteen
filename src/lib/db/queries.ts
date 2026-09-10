@@ -1,4 +1,4 @@
-import { and, desc, eq, ilike, isNotNull, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, ilike, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
 
 import { generateDailyPrompt } from "@/lib/ai";
 import { countBars } from "@/lib/bars";
@@ -10,7 +10,11 @@ import { dailyPrompts, verses, type DailyPrompt, type Verse } from "./schema";
 
 const RECENT_CONCEPTS_LIMIT = 14;
 const ARCHIVE_LIMIT = 60;
+const NOTEBOOK_LIMIT = 200;
 const STREAK_SCAN_LIMIT = 400;
+
+// Enough of the top of a loose verse for the list to name it by its first bar.
+const OPENING_LENGTH = 160;
 
 // How much of a verse the archive shows per row, and how far ahead of a search
 // hit the shown window starts so the match lands in context instead of at the
@@ -219,6 +223,117 @@ export async function getArchiveDetail(
 
   if (!row) return null;
   return { prompt: row.prompt, verse: row.verse ?? undefined };
+}
+
+// A loose verse - no prompt behind it, so nothing to show but the writing.
+// Everything here is bounded: the opening names the row, the excerpt says why
+// a search matched it, and the body itself stays in the database until the
+// verse is actually opened.
+export interface NotebookEntry {
+  id: string;
+  barCount: number;
+  updatedAt: Date;
+  opening: string;
+  excerpt: string | null;
+}
+
+// isNull(promptId) is what separates the notebook from the daily verses
+// sharing this table, and eq(userId) is what separates one writer from
+// another. Every notebook query carries both.
+function isNotebookVerse(userId: string): SQL | undefined {
+  return and(eq(verses.userId, userId), isNull(verses.promptId));
+}
+
+export async function listNotebook(
+  userId: string,
+  search?: string | null,
+): Promise<NotebookEntry[]> {
+  const query = normalizeSearchQuery(search);
+
+  return db
+    .select({
+      id: verses.id,
+      barCount: verses.barCount,
+      updatedAt: verses.updatedAt,
+      opening: sql<string>`left(${verses.body}, ${OPENING_LENGTH}::int)`,
+      excerpt: bodyExcerpt(query ?? ""),
+    })
+    .from(verses)
+    .where(
+      and(
+        isNotebookVerse(userId),
+        query ? ilike(verses.body, likePattern(query)) : undefined,
+      ),
+    )
+    .orderBy(desc(verses.updatedAt))
+    .limit(NOTEBOOK_LIMIT);
+}
+
+export async function getNotebookVerse(
+  id: string,
+  userId: string,
+): Promise<Verse | undefined> {
+  const [verse] = await db
+    .select()
+    .from(verses)
+    .where(and(eq(verses.id, id), isNotebookVerse(userId)))
+    .limit(1);
+
+  return verse;
+}
+
+export async function createNotebookVerse(input: {
+  userId: string;
+  body: string;
+}): Promise<Verse> {
+  const [verse] = await db
+    .insert(verses)
+    .values({
+      promptId: null,
+      userId: input.userId,
+      body: input.body,
+      barCount: countBars(input.body),
+    })
+    .returning();
+
+  return verse;
+}
+
+// Undefined when the id belongs to somebody else, to a daily verse, or to
+// nothing at all - the caller turns that into a 404 rather than a silent
+// success, and the where clause is what makes those cases indistinguishable
+// from the outside.
+export async function updateNotebookVerse(input: {
+  id: string;
+  userId: string;
+  body: string;
+}): Promise<Verse | undefined> {
+  const [verse] = await db
+    .update(verses)
+    .set({
+      body: input.body,
+      barCount: countBars(input.body),
+      // The database stamps this, not the app: the list is ordered by it, and
+      // a JS Date is only precise to the millisecond, so a verse edited just
+      // after another was created could otherwise sort behind it.
+      updatedAt: sql`now()`,
+    })
+    .where(and(eq(verses.id, input.id), isNotebookVerse(input.userId)))
+    .returning();
+
+  return verse;
+}
+
+export async function deleteNotebookVerse(input: {
+  id: string;
+  userId: string;
+}): Promise<boolean> {
+  const deleted = await db
+    .delete(verses)
+    .where(and(eq(verses.id, input.id), isNotebookVerse(input.userId)))
+    .returning({ id: verses.id });
+
+  return deleted.length > 0;
 }
 
 export async function getStreak(userId: string): Promise<number> {

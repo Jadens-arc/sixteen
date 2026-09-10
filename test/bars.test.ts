@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { BAR_TARGET, countBars, splitQuatrains } from "@/lib/bars";
+import { BAR_TARGET, countBars, firstBar, splitQuatrains } from "@/lib/bars";
 
 describe("countBars", () => {
   it("counts non-empty lines", () => {
@@ -45,5 +45,20 @@ describe("splitQuatrains", () => {
 
   it("returns an empty array for an empty body", () => {
     expect(splitQuatrains("")).toEqual([]);
+  });
+});
+
+describe("firstBar", () => {
+  it("takes the opening line", () => {
+    expect(firstBar("cold open\nsecond bar")).toBe("cold open");
+  });
+
+  it("skips leading blank lines and trims", () => {
+    expect(firstBar("\n\n   cold open   \nsecond")).toBe("cold open");
+  });
+
+  it("returns nothing for a verse with no writing in it", () => {
+    expect(firstBar("")).toBe("");
+    expect(firstBar("   \n \n")).toBe("");
   });
 });
