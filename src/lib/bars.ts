@@ -23,3 +23,10 @@ export function splitQuatrains(body: string): string[][] {
 
   return quatrains;
 }
+
+// What a loose verse gets called in a list: its opening bar. A verse with no
+// prompt behind it has no other name, and asking someone to title a jotting
+// is asking them to stop writing.
+export function firstBar(body: string): string {
+  return nonEmptyLines(body)[0]?.trim() ?? "";
+}

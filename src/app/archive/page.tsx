@@ -1,5 +1,5 @@
 import { ArchiveList } from "@/components/archive-list";
-import { ArchiveSearch } from "@/components/archive-search";
+import { SearchField } from "@/components/search-field";
 import { SetupNotice } from "@/components/setup-notice";
 import { StreakBadge } from "@/components/streak-badge";
 import { requireUserId } from "@/lib/auth";
@@ -49,7 +49,11 @@ export default async function ArchivePage({
       </div>
 
       <div className="flex flex-col gap-2">
-        <ArchiveSearch query={query ?? ""} />
+        <SearchField
+          path="/archive"
+          query={query ?? ""}
+          placeholder="Search your verses and prompts"
+        />
         {query ? (
           <p className="text-muted-foreground text-xs">
             {countLabel(archive.entries.length)} for &ldquo;{query}&rdquo; - searching

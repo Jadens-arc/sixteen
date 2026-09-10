@@ -1,12 +1,12 @@
 import Link from "next/link";
 
 import { BarMeter } from "@/components/bar-meter";
+import { Highlighted } from "@/components/highlighted";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BAR_TARGET } from "@/lib/bars";
 import { formatPromptDate } from "@/lib/date";
 import type { ArchiveEntry } from "@/lib/db/queries";
-import { highlightSegments } from "@/lib/search";
 
 function VerseStatus({ entry }: { entry: ArchiveEntry }) {
   if (!entry.verse || entry.verse.barCount === 0) {
@@ -19,24 +19,6 @@ function VerseStatus({ entry }: { entry: ArchiveEntry }) {
     <Badge variant="secondary" className="font-mono">
       {entry.verse.barCount} / {BAR_TARGET}
     </Badge>
-  );
-}
-
-// Shows a searcher what the row matched on, without the highlight leaking into
-// the text itself - the segments are the same string, split.
-function Highlighted({ text, query }: { text: string; query: string | null }) {
-  return (
-    <>
-      {highlightSegments(text, query).map((segment, i) =>
-        segment.match ? (
-          <mark key={i} className="bg-primary/20 text-foreground rounded-sm">
-            {segment.text}
-          </mark>
-        ) : (
-          <span key={i}>{segment.text}</span>
-        ),
-      )}
-    </>
   );
 }
 
