@@ -1,26 +1,42 @@
 import { ArchiveList } from "@/components/archive-list";
+import { ArchiveSearch } from "@/components/archive-search";
 import { SetupNotice } from "@/components/setup-notice";
 import { StreakBadge } from "@/components/streak-badge";
 import { requireUserId } from "@/lib/auth";
 import { getStreak, listArchive, type ArchiveEntry } from "@/lib/db/queries";
+import { normalizeSearchQuery } from "@/lib/search";
 
 // Same reasoning as the Today page: this reads from the database on every
 // request and must never be prerendered at build time.
 export const dynamic = "force-dynamic";
 
-async function loadArchive(): Promise<{ entries: ArchiveEntry[]; streak: number }> {
+async function loadArchive(
+  query: string | null,
+): Promise<{ entries: ArchiveEntry[]; streak: number }> {
   const userId = await requireUserId();
   const [entries, streak] = await Promise.all([
-    listArchive(userId),
+    listArchive(userId, query),
     getStreak(userId),
   ]);
   return { entries, streak };
 }
 
-export default async function ArchivePage() {
+function countLabel(count: number): string {
+  return count === 1 ? "1 match" : `${count} matches`;
+}
+
+export default async function ArchivePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string | string[] }>;
+}) {
+  // Next hands a repeated ?q= back as an array; one search box means one query.
+  const { q } = await searchParams;
+  const query = normalizeSearchQuery(Array.isArray(q) ? q[0] : q);
+
   let archive: { entries: ArchiveEntry[]; streak: number };
   try {
-    archive = await loadArchive();
+    archive = await loadArchive(query);
   } catch (error) {
     return <SetupNotice error={error} />;
   }
@@ -31,7 +47,18 @@ export default async function ArchivePage() {
         <h1 className="font-mono text-lg font-semibold">Archive</h1>
         <StreakBadge streak={archive.streak} />
       </div>
-      <ArchiveList entries={archive.entries} />
+
+      <div className="flex flex-col gap-2">
+        <ArchiveSearch query={query ?? ""} />
+        {query ? (
+          <p className="text-muted-foreground text-xs">
+            {countLabel(archive.entries.length)} for &ldquo;{query}&rdquo; - searching
+            concepts, scenarios and your verses.
+          </p>
+        ) : null}
+      </div>
+
+      <ArchiveList entries={archive.entries} query={query} />
     </main>
   );
 }

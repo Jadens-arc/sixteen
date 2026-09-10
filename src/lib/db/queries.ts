@@ -1,8 +1,9 @@
-import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, isNotNull, or, sql, type SQL } from "drizzle-orm";
 
 import { generateDailyPrompt } from "@/lib/ai";
 import { countBars } from "@/lib/bars";
 import { addDays, todayInAppTimezone } from "@/lib/date";
+import { likePattern, normalizeSearchQuery } from "@/lib/search";
 
 import { db } from "./client";
 import { dailyPrompts, verses, type DailyPrompt, type Verse } from "./schema";
@@ -10,6 +11,12 @@ import { dailyPrompts, verses, type DailyPrompt, type Verse } from "./schema";
 const RECENT_CONCEPTS_LIMIT = 14;
 const ARCHIVE_LIMIT = 60;
 const STREAK_SCAN_LIMIT = 400;
+
+// How much of a verse the archive shows per row, and how far ahead of a search
+// hit the shown window starts so the match lands in context instead of at the
+// left edge.
+const EXCERPT_LENGTH = 180;
+const EXCERPT_RADIUS = 60;
 
 async function recentConcepts(): Promise<string[]> {
   const rows = await db
@@ -117,8 +124,8 @@ export async function upsertVerse(input: {
 }
 
 // Only what the archive actually renders. Selecting the whole verse row would
-// pull every body - up to ARCHIVE_LIMIT of them - across the wire on a page
-// that never displays one.
+// pull every body - up to ARCHIVE_LIMIT of them, each up to MAX_VERSE_LENGTH -
+// across the wire on a page that shows two lines of one.
 export interface ArchiveVerse {
   barCount: number;
   completedAt: Date | null;
@@ -127,9 +134,52 @@ export interface ArchiveVerse {
 export interface ArchiveEntry {
   prompt: DailyPrompt;
   verse: ArchiveVerse | null;
+  // A window onto the verse body: the opening lines normally, the text around
+  // the first hit when searching. Null when there is no verse to excerpt.
+  excerpt: string | null;
 }
 
-export async function listArchive(userId: string): Promise<ArchiveEntry[]> {
+// Postgres cuts the window so the body itself never travels. strpos is
+// 1-based and returns 0 when the query missed the body entirely - the row
+// matched on its prompt, or there is no query - and greatest() reads that as
+// "start at the top", which is exactly the preview an unsearched archive wants.
+function bodyExcerpt(query: string): SQL<string | null> {
+  return sql<string | null>`(
+    select
+      case when w.start > 1 then '...' else '' end
+      || substring(${verses.body} from w.start for ${EXCERPT_LENGTH}::int)
+      || case
+           when char_length(${verses.body}) > w.start + ${EXCERPT_LENGTH}::int - 1
+           then '...'
+           else ''
+         end
+    from (
+      select greatest(
+        strpos(lower(${verses.body}), lower(${query})) - ${EXCERPT_RADIUS}::int,
+        1
+      ) as start
+    ) as w
+  )`;
+}
+
+// The verse body is joined on the user id, so a match against it can only ever
+// be a match against the caller's own writing.
+function matchesSearch(query: string): SQL | undefined {
+  const pattern = likePattern(query);
+
+  return or(
+    ilike(dailyPrompts.concept, pattern),
+    ilike(dailyPrompts.scenario, pattern),
+    ilike(verses.body, pattern),
+  );
+}
+
+export async function listArchive(
+  userId: string,
+  search?: string | null,
+): Promise<ArchiveEntry[]> {
+  const query = normalizeSearchQuery(search);
+
   const rows = await db
     .select({
       prompt: dailyPrompts,
@@ -137,13 +187,38 @@ export async function listArchive(userId: string): Promise<ArchiveEntry[]> {
       // join collapses to null from the first selected column of the joined
       // table, so that column has to be one that is NOT NULL when a row exists.
       verse: { barCount: verses.barCount, completedAt: verses.completedAt },
+      excerpt: bodyExcerpt(query ?? ""),
     })
     .from(dailyPrompts)
     .leftJoin(verses, and(eq(verses.promptId, dailyPrompts.id), eq(verses.userId, userId)))
+    .where(query ? matchesSearch(query) : undefined)
     .orderBy(desc(dailyPrompts.promptDate))
     .limit(ARCHIVE_LIMIT);
 
   return rows;
+}
+
+export interface ArchiveDetail {
+  prompt: DailyPrompt;
+  verse: Verse | undefined;
+}
+
+// The whole verse this time - this is the page that opens it for editing.
+// Null when no prompt was ever issued for that date, which the route turns
+// into a 404 rather than an empty pad against nothing.
+export async function getArchiveDetail(
+  promptDate: string,
+  userId: string,
+): Promise<ArchiveDetail | null> {
+  const [row] = await db
+    .select({ prompt: dailyPrompts, verse: verses })
+    .from(dailyPrompts)
+    .leftJoin(verses, and(eq(verses.promptId, dailyPrompts.id), eq(verses.userId, userId)))
+    .where(eq(dailyPrompts.promptDate, promptDate))
+    .limit(1);
+
+  if (!row) return null;
+  return { prompt: row.prompt, verse: row.verse ?? undefined };
 }
 
 export async function getStreak(userId: string): Promise<number> {

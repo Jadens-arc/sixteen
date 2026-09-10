@@ -105,4 +105,60 @@ describe("VersePad", () => {
 
     expect(toast.error).toHaveBeenCalled();
   });
+
+  it("locks a completed verse until it is reopened", async () => {
+    const user = userEvent.setup({ delay: null });
+    render(
+      <VersePad
+        promptId="prompt-1"
+        initialBody="first bar"
+        initialCompletedAt="2026-03-04T10:00:00.000Z"
+      />,
+    );
+
+    expect(screen.getByLabelText("Verse")).toHaveAttribute("readonly");
+    expect(screen.getByText("Done - reopen to edit")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+
+    expect(screen.getByLabelText("Verse")).not.toHaveAttribute("readonly");
+  });
+
+  it("saves an edit made to a completed verse", async () => {
+    const user = userEvent.setup({ delay: null });
+    render(
+      <VersePad
+        promptId="prompt-1"
+        initialBody="first bar"
+        initialCompletedAt="2026-03-04T10:00:00.000Z"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    await user.type(screen.getByLabelText("Verse"), " rewritten");
+    await act(async () => {
+      vi.advanceTimersByTime(800);
+    });
+
+    expect(saveVerse).toHaveBeenCalledWith({
+      promptId: "prompt-1",
+      body: "first bar rewritten",
+    });
+  });
+
+  it("locks the pad again when the edit is finished", async () => {
+    const user = userEvent.setup({ delay: null });
+    render(
+      <VersePad
+        promptId="prompt-1"
+        initialBody="first bar"
+        initialCompletedAt="2026-03-04T10:00:00.000Z"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    await user.click(screen.getByRole("button", { name: "Done editing" }));
+
+    expect(screen.getByLabelText("Verse")).toHaveAttribute("readonly");
+  });
 });

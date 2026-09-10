@@ -4,8 +4,8 @@ A daily writing-prompt app for a rapper. Every morning it serves one
 generated prompt for a 16-bar verse - a concept, a scenario to write from,
 a rhyme scheme, a pocket (flow/tempo), a handful of constraints, and a word
 bank - and gives a pad to write the verse against it, with a bar counter and
-autosave. Past prompts and verses live in an archive, alongside a streak of
-consecutive days completed.
+autosave. Past prompts and verses live in a searchable archive - any day can
+be reopened and rewritten - alongside a streak of consecutive days completed.
 
 The prompt is shared by everyone who uses the app (one per calendar day,
 Wordle-style); each signed-in user keeps their own verse against it.
@@ -62,6 +62,40 @@ change. To add a new provider: implement `PromptProvider` in
 system/user instructions so both API providers ask for the same thing. The
 last ~14 concepts are passed in as `recentConcepts` so the model avoids
 repeating itself.
+
+## The archive
+
+`/archive` lists the last 60 daily prompts newest first, each with the state
+of your verse against it (not started, a bar count, or done) and the opening
+lines of what you wrote. Every row links to `/archive/<date>` - the same
+prompt card and the same pad the day itself had, loaded with your verse.
+
+Nothing is frozen. A completed verse opens read-only with an **Edit** button;
+reopening it makes the pad editable and autosave takes over as usual. Because
+`upsertVerse()` only ever writes `completed_at` on the call that completes a
+verse, editing one months later cannot un-complete it or cost a streak.
+
+### Search
+
+The search box on `/archive` filters the list by concept, scenario, and the
+text of your own verses, case-insensitively. The query lives in the URL
+(`/archive?q=pawn+shop`), so a search is back-button-able and linkable; the
+input debounces and calls `router.replace()`, and the form still works as a
+plain `GET` with JavaScript off.
+
+Two details are worth knowing:
+
+- **The bodies never come down.** `listArchive()` asks Postgres for a
+  180-character window around the first hit rather than the verse itself,
+  since 60 rows of `MAX_VERSE_LENGTH` bodies would be megabytes on a page
+  that renders two lines of one. With no query, the same expression returns
+  the top of each verse as a preview.
+- **Wildcards are literal.** `likePattern()` in `src/lib/search.ts` escapes
+  `%`, `_` and `\` before building the `ILIKE` pattern, so searching for
+  `50%` finds the bar with `50%` in it instead of every row.
+
+The verse body is joined on the user id before it is matched, so a search can
+only ever hit your own writing.
 
 ## Environment variables
 
@@ -121,8 +155,8 @@ middleware's list can widen without widening what a signed-out caller can do.
 Clerk session by design and is guarded by `CRON_SECRET` instead, so the daily
 prompt job keeps running through a Clerk misconfiguration.
 
-`/` and `/archive` are `force-dynamic` so they're never prerendered at build
-time, and a missing `DATABASE_URL` (or any other setup problem) surfaces as an
+`/`, `/archive` and `/archive/<date>` are `force-dynamic` so they're never
+prerendered at build time, and a missing `DATABASE_URL` (or any other setup problem) surfaces as an
 in-app notice at request time instead of a stack trace.
 
 ## A note on Clerk keys and domains
