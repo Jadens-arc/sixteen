@@ -87,16 +87,19 @@ plain `GET` with JavaScript off.
 
 Two details are worth knowing:
 
-- **The bodies never come down.** `listArchive()` asks Postgres for a
-  180-character window around the first hit rather than the verse itself,
-  since 60 rows of `MAX_VERSE_LENGTH` bodies would be megabytes on a page
-  that renders two lines of one. With no query, the same expression returns
-  the top of each verse as a preview.
-- **Wildcards are literal.** `likePattern()` in `src/lib/search.ts` escapes
-  `%`, `_` and `\` before building the `ILIKE` pattern, so searching for
-  `50%` finds the bar with `50%` in it instead of every row.
+- **The bodies never reach the browser.** Postgres cannot search a verse it
+  cannot read - see [Encryption at rest](#encryption-at-rest) - so the
+  matching and the excerpting happen on the server, in `matchesQuery()` and
+  `excerptAround()` (`src/lib/search.ts`). A search decrypts a bounded window
+  of rows, the most recent 500, and sends on a 180-character excerpt of each
+  hit. The page renders two lines of a verse and is still handed two lines of
+  it; 60 rows of `MAX_VERSE_LENGTH` bodies would be megabytes.
+- **Wildcards are literal.** A substring search in JavaScript has none, so
+  `50%` finds the bar with `50%` in it without anything having to arrange
+  that. This used to take a `likePattern()` helper escaping `%`, `_` and `\`
+  for the `ILIKE`.
 
-The verse body is joined on the user id before it is matched, so a search can
+The verse body is joined on the user id before it is read, so a search can
 only ever hit your own writing.
 
 ## The streak
@@ -153,6 +156,77 @@ Deleting is the one destructive thing in the app, so it asks first, and
 `deleteVerseNote()` scopes the delete to the signed-in user rather than
 trusting the id it was handed.
 
+## Encryption at rest
+
+Verse bodies are encrypted in the database - the daily ones and the loose
+notebook ones alike. `src/lib/verse-crypto.ts` holds the format;
+`src/lib/db/queries.ts` is its only caller, encrypting on every write and
+decrypting on every read, so nothing above that module - no action, no page,
+no pad - ever handles anything but writing.
+
+A stored body looks like this:
+
+```
+sixteen.v1.<key id>.<iv>.<ciphertext + tag>
+```
+
+AES-256-GCM, a fresh 96-bit IV per write, and the user id as additional
+authenticated data - so a ciphertext moved from one row to another fails to
+authenticate rather than opening in somebody else's notebook. The key comes
+from `VERSE_ENCRYPTION_KEY` and lives only in the environment. A database
+dump without it is a table of timestamps and bar counts.
+
+### Nothing already written is lost
+
+Three properties, and all three exist for that one reason.
+
+- **A verse from before this reads as what it is.** A body with no envelope
+  prefix is plaintext and is returned untouched, so every verse already in the
+  database keeps opening - no migration, no schema change, no backfill
+  required. The format is in the value, not in the column, which is also why
+  turning encryption on is an environment variable rather than a deploy
+  someone has to sequence.
+- **A body that cannot be decrypted throws.** It never degrades to a
+  placeholder. A placeholder would reach the pad, and the pad autosaves: the
+  row would be overwritten with the stand-in and the verse really would be
+  gone. Instead the read fails, the page shows the setup notice, and the
+  ciphertext sits on disk untouched. The error names the key id the body was
+  written with, so the fix is a lookup rather than a guess.
+- **Rotation keeps the old key readable.** Every envelope names the key that
+  wrote it. Set the new key as `VERSE_ENCRYPTION_KEY` and the old one as
+  `VERSE_ENCRYPTION_KEY_PREVIOUS`: verses written under either open, and new
+  writes use the new key.
+
+With no key configured the app stores plaintext exactly as it did before -
+the same reason nothing else here is required for the app to boot. Setting a
+key encrypts new writes immediately, and existing rows encrypt themselves the
+next time they are saved. To do the rest in one pass:
+
+```bash
+VERSE_ENCRYPTION_KEY=... DATABASE_URL=... npm run db:encrypt-verses
+```
+
+`scripts/encrypt-verses.ts` walks the table by id, skips what is already
+encrypted (so it is safe to re-run and safe to interrupt), and reads every row
+back before committing it, so a wrong key stops the run rather than rewriting
+a notebook into noise. Each update matches on the body it read as well as on
+the id, so a verse someone saved in the app mid-run keeps what they typed
+instead of being overwritten with the copy the scan started from. And it
+leaves `updated_at` alone - re-encrypting a verse is not editing it, and the
+notebook is ordered by that column.
+
+This is deliberately not wired into `vercel-build` the way migrations are. A
+migration has to run or the code ships against a schema that doesn't match it;
+this is a one-time pass over existing rows that is correct to never run at all.
+
+### What is not encrypted
+
+`bar_count`, the timestamps, and the daily prompts. The bar count is a number
+the meter, the archive and the streak read without opening a verse - a length,
+not the writing. The prompts are identical for everyone and already public on
+the home page. A body's length also shows through in its ciphertext's length,
+as it does in any scheme shaped like this one.
+
 ## Environment variables
 
 See `.env.example` for the same list with inline comments.
@@ -172,6 +246,8 @@ See `.env.example` for the same list with inline comments.
 | `AI_MODEL` | No | Model id. Each provider has a sane default when unset. |
 | `AI_BASE_URL` | No | `openai` provider only. Defaults to `https://api.openai.com/v1`; point it at any OpenAI-compatible server instead. |
 | `CRON_SECRET` | Recommended | Bearer token the cron route requires. If unset, the guard is skipped in development but the route rejects every request in production. |
+| `VERSE_ENCRYPTION_KEY` | Recommended | 32-byte key that verse bodies are encrypted with at rest: base64 (`openssl rand -base64 32`) or 64 hex characters. Unset means verses are stored as plain text, as they were before this existed. A verse encrypted under a key that is lost cannot be read by anyone. See [Encryption at rest](#encryption-at-rest). |
+| `VERSE_ENCRYPTION_KEY_PREVIOUS` | No | The previous key, while rotating. Decrypt-only: verses it wrote keep opening, new writes use `VERSE_ENCRYPTION_KEY`. |
 
 Nothing here is required for `npm run build` to succeed - the app is meant
 to deploy to Vercel before any of these are set, then have them added in the

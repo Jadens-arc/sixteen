@@ -1,5 +1,5 @@
-// Ceiling on a search string. The query becomes a LIKE pattern that Postgres
-// scans every archived verse body with, so it stays short by construction.
+// Ceiling on a search string. Every verse in the scanned window is matched
+// against it, so it stays short by construction.
 export const MAX_SEARCH_LENGTH = 100;
 
 /**
@@ -15,14 +15,40 @@ export function normalizeSearchQuery(raw: string | null | undefined): string | n
 }
 
 /**
- * Wraps a query as a substring LIKE pattern. The wildcards a person types are
- * literal characters to them - searching for "50%" should find the bar with
- * "50%" in it, not every row - so they're escaped rather than passed through.
- * Backslash goes first, or it would escape the escapes added after it.
+ * Whether a piece of text contains the query, case-insensitively.
+ *
+ * This used to be an `ILIKE` pattern Postgres ran over the verse bodies. It
+ * cannot be, now that those bodies are stored encrypted: matching happens
+ * where the plaintext is, which is here. One upside comes free - a substring
+ * search in JavaScript has no wildcards to escape, so `50%` looks for `50%`
+ * without anything having to arrange that.
  */
-export function likePattern(query: string): string {
-  const escaped = query.replace(/[\\%_]/g, (char) => `\\${char}`);
-  return `%${escaped}%`;
+export function matchesQuery(text: string, query: string): boolean {
+  return text.toLowerCase().includes(query.toLowerCase());
+}
+
+// How much of a body an excerpt shows, and how far ahead of a hit the window
+// starts so the match lands in context instead of at the left edge.
+const EXCERPT_LENGTH = 180;
+const EXCERPT_RADIUS = 60;
+
+/**
+ * A window onto a body: the text around the first hit when searching, the top
+ * of it otherwise. A query that misses the body entirely - the row matched on
+ * its prompt, or there is no query - reads as "start at the top", which is
+ * exactly the preview an unsearched list wants.
+ *
+ * Ellipses mark a window that starts or ends mid-body, so a reader can tell a
+ * clipped excerpt from a short verse.
+ */
+export function excerptAround(body: string, query: string | null): string {
+  const at = query ? body.toLowerCase().indexOf(query.toLowerCase()) : -1;
+  const start = at === -1 ? 0 : Math.max(at - EXCERPT_RADIUS, 0);
+
+  const prefix = start > 0 ? "..." : "";
+  const suffix = body.length > start + EXCERPT_LENGTH ? "..." : "";
+
+  return `${prefix}${body.slice(start, start + EXCERPT_LENGTH)}${suffix}`;
 }
 
 export interface HighlightSegment {

@@ -1,9 +1,10 @@
-import { and, desc, eq, ilike, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, sql, type SQL } from "drizzle-orm";
 
 import { generateDailyPrompt } from "@/lib/ai";
 import { countBars } from "@/lib/bars";
 import { addDays, todayInAppTimezone } from "@/lib/date";
-import { likePattern, normalizeSearchQuery } from "@/lib/search";
+import { excerptAround, matchesQuery, normalizeSearchQuery } from "@/lib/search";
+import { decryptVerseBody, encryptVerseBody } from "@/lib/verse-crypto";
 
 import { db } from "./client";
 import { dailyPrompts, verses, type DailyPrompt, type Verse } from "./schema";
@@ -13,14 +14,25 @@ const ARCHIVE_LIMIT = 60;
 const NOTEBOOK_LIMIT = 200;
 const STREAK_SCAN_LIMIT = 400;
 
+// How many rows a search reads before filtering. Postgres used to do the
+// filtering with an ILIKE over the verse bodies and return only the matches;
+// it cannot see those bodies any more, so the window is what bounds the work
+// instead: a search covers the most recent 500 prompts and the most recent 500
+// loose verses, and returns the first ARCHIVE_LIMIT / NOTEBOOK_LIMIT hits in
+// that window. At one prompt a day, 500 is well over a year of them.
+const SEARCH_SCAN_LIMIT = 500;
+
 // Enough of the top of a loose verse for the list to name it by its first bar.
 const OPENING_LENGTH = 160;
 
-// How much of a verse the archive shows per row, and how far ahead of a search
-// hit the shown window starts so the match lands in context instead of at the
-// left edge.
-const EXCERPT_LENGTH = 180;
-const EXCERPT_RADIUS = 60;
+// The boundary where a stored body becomes writing again. Above this module -
+// the actions, the pages, the pads - a verse body is always plaintext; below
+// it, in the database, it is always whatever src/lib/verse-crypto.ts wrote.
+// Every read goes through here so no path can forget, and every write goes
+// through encryptVerseBody() for the same reason.
+function decodeVerse<T extends { body: string }>(verse: T, userId: string): T {
+  return { ...verse, body: decryptVerseBody(verse.body, userId) };
+}
 
 async function recentConcepts(): Promise<string[]> {
   const rows = await db
@@ -88,7 +100,7 @@ export async function getVerseForPrompt(
     .where(and(eq(verses.promptId, promptId), eq(verses.userId, userId)))
     .limit(1);
 
-  return verse;
+  return verse && decodeVerse(verse, userId);
 }
 
 export async function upsertVerse(input: {
@@ -97,7 +109,11 @@ export async function upsertVerse(input: {
   body: string;
   completed?: boolean;
 }): Promise<Verse> {
+  // Counted from the plaintext, before it goes down. The bar count is a number
+  // the meter, the archive and the streak all read without opening the verse,
+  // so it stays readable in the row - a length, not the writing.
   const barCount = countBars(input.body);
+  const body = encryptVerseBody(input.body, input.userId);
   const now = new Date();
 
   const [verse] = await db
@@ -105,7 +121,7 @@ export async function upsertVerse(input: {
     .values({
       promptId: input.promptId,
       userId: input.userId,
-      body: input.body,
+      body,
       barCount,
       completedAt: input.completed ? now : null,
       updatedAt: now,
@@ -113,7 +129,7 @@ export async function upsertVerse(input: {
     .onConflictDoUpdate({
       target: [verses.promptId, verses.userId],
       set: {
-        body: input.body,
+        body,
         barCount,
         // Leave an existing completion timestamp alone unless this call is
         // the one marking the verse complete - an autosave shouldn't be able
@@ -124,12 +140,11 @@ export async function upsertVerse(input: {
     })
     .returning();
 
-  return verse;
+  return decodeVerse(verse, input.userId);
 }
 
-// Only what the archive actually renders. Selecting the whole verse row would
-// pull every body - up to ARCHIVE_LIMIT of them, each up to MAX_VERSE_LENGTH -
-// across the wire on a page that shows two lines of one.
+// Only what the archive actually renders. The verse body is read to search and
+// to excerpt it, but it is not part of what the page gets handed.
 export interface ArchiveVerse {
   barCount: number;
   completedAt: Date | null;
@@ -143,38 +158,18 @@ export interface ArchiveEntry {
   excerpt: string | null;
 }
 
-// Postgres cuts the window so the body itself never travels. strpos is
-// 1-based and returns 0 when the query missed the body entirely - the row
-// matched on its prompt, or there is no query - and greatest() reads that as
-// "start at the top", which is exactly the preview an unsearched archive wants.
-function bodyExcerpt(query: string): SQL<string | null> {
-  return sql<string | null>`(
-    select
-      case when w.start > 1 then '...' else '' end
-      || substring(${verses.body} from w.start for ${EXCERPT_LENGTH}::int)
-      || case
-           when char_length(${verses.body}) > w.start + ${EXCERPT_LENGTH}::int - 1
-           then '...'
-           else ''
-         end
-    from (
-      select greatest(
-        strpos(lower(${verses.body}), lower(${query})) - ${EXCERPT_RADIUS}::int,
-        1
-      ) as start
-    ) as w
-  )`;
-}
-
-// The verse body is joined on the user id, so a match against it can only ever
-// be a match against the caller's own writing.
-function matchesSearch(query: string): SQL | undefined {
-  const pattern = likePattern(query);
-
-  return or(
-    ilike(dailyPrompts.concept, pattern),
-    ilike(dailyPrompts.scenario, pattern),
-    ilike(verses.body, pattern),
+// A row matches on its prompt or on the writing against it. The body is joined
+// on the user id, so a match against it can only ever be a match against the
+// caller's own writing.
+function matchesArchiveSearch(
+  prompt: DailyPrompt,
+  body: string | null,
+  query: string,
+): boolean {
+  return (
+    matchesQuery(prompt.concept, query) ||
+    matchesQuery(prompt.scenario, query) ||
+    (body !== null && matchesQuery(body, query))
   );
 }
 
@@ -190,16 +185,37 @@ export async function listArchive(
       // barCount leads deliberately: drizzle decides whether an unmatched left
       // join collapses to null from the first selected column of the joined
       // table, so that column has to be one that is NOT NULL when a row exists.
-      verse: { barCount: verses.barCount, completedAt: verses.completedAt },
-      excerpt: bodyExcerpt(query ?? ""),
+      verse: {
+        barCount: verses.barCount,
+        completedAt: verses.completedAt,
+        body: verses.body,
+      },
     })
     .from(dailyPrompts)
     .leftJoin(verses, and(eq(verses.promptId, dailyPrompts.id), eq(verses.userId, userId)))
-    .where(query ? matchesSearch(query) : undefined)
     .orderBy(desc(dailyPrompts.promptDate))
-    .limit(ARCHIVE_LIMIT);
+    .limit(query ? SEARCH_SCAN_LIMIT : ARCHIVE_LIMIT);
 
-  return rows;
+  const entries: ArchiveEntry[] = [];
+
+  for (const row of rows) {
+    const body = row.verse ? decryptVerseBody(row.verse.body, userId) : null;
+    if (query && !matchesArchiveSearch(row.prompt, body, query)) continue;
+
+    entries.push({
+      prompt: row.prompt,
+      // The body stops here. It came to the server to be searched and cut
+      // down; what carries on to the browser is the excerpt.
+      verse: row.verse
+        ? { barCount: row.verse.barCount, completedAt: row.verse.completedAt }
+        : null,
+      excerpt: body === null ? null : excerptAround(body, query),
+    });
+
+    if (entries.length === ARCHIVE_LIMIT) break;
+  }
+
+  return entries;
 }
 
 export interface ArchiveDetail {
@@ -222,19 +238,21 @@ export async function getArchiveDetail(
     .limit(1);
 
   if (!row) return null;
-  return { prompt: row.prompt, verse: row.verse ?? undefined };
+  return {
+    prompt: row.prompt,
+    verse: row.verse ? decodeVerse(row.verse, userId) : undefined,
+  };
 }
 
 // A loose verse - no prompt behind it, so nothing to show but the writing.
 // Everything here is bounded: the opening names the row, the excerpt says why
-// a search matched it, and the body itself stays in the database until the
-// verse is actually opened.
+// a search matched it, and neither is the whole verse.
 export interface NotebookEntry {
   id: string;
   barCount: number;
   updatedAt: Date;
   opening: string;
-  excerpt: string | null;
+  excerpt: string;
 }
 
 // isNull(promptId) is what separates the notebook from the daily verses
@@ -250,23 +268,36 @@ export async function listNotebook(
 ): Promise<NotebookEntry[]> {
   const query = normalizeSearchQuery(search);
 
-  return db
+  const rows = await db
     .select({
       id: verses.id,
       barCount: verses.barCount,
       updatedAt: verses.updatedAt,
-      opening: sql<string>`left(${verses.body}, ${OPENING_LENGTH}::int)`,
-      excerpt: bodyExcerpt(query ?? ""),
+      body: verses.body,
     })
     .from(verses)
-    .where(
-      and(
-        isNotebookVerse(userId),
-        query ? ilike(verses.body, likePattern(query)) : undefined,
-      ),
-    )
+    .where(isNotebookVerse(userId))
     .orderBy(desc(verses.updatedAt))
-    .limit(NOTEBOOK_LIMIT);
+    .limit(query ? SEARCH_SCAN_LIMIT : NOTEBOOK_LIMIT);
+
+  const entries: NotebookEntry[] = [];
+
+  for (const row of rows) {
+    const body = decryptVerseBody(row.body, userId);
+    if (query && !matchesQuery(body, query)) continue;
+
+    entries.push({
+      id: row.id,
+      barCount: row.barCount,
+      updatedAt: row.updatedAt,
+      opening: body.slice(0, OPENING_LENGTH),
+      excerpt: excerptAround(body, query),
+    });
+
+    if (entries.length === NOTEBOOK_LIMIT) break;
+  }
+
+  return entries;
 }
 
 export async function getNotebookVerse(
@@ -279,7 +310,7 @@ export async function getNotebookVerse(
     .where(and(eq(verses.id, id), isNotebookVerse(userId)))
     .limit(1);
 
-  return verse;
+  return verse && decodeVerse(verse, userId);
 }
 
 export async function createNotebookVerse(input: {
@@ -291,12 +322,12 @@ export async function createNotebookVerse(input: {
     .values({
       promptId: null,
       userId: input.userId,
-      body: input.body,
+      body: encryptVerseBody(input.body, input.userId),
       barCount: countBars(input.body),
     })
     .returning();
 
-  return verse;
+  return decodeVerse(verse, input.userId);
 }
 
 // Undefined when the id belongs to somebody else, to a daily verse, or to
@@ -311,7 +342,7 @@ export async function updateNotebookVerse(input: {
   const [verse] = await db
     .update(verses)
     .set({
-      body: input.body,
+      body: encryptVerseBody(input.body, input.userId),
       barCount: countBars(input.body),
       // The database stamps this, not the app: the list is ordered by it, and
       // a JS Date is only precise to the millisecond, so a verse edited just
@@ -321,7 +352,7 @@ export async function updateNotebookVerse(input: {
     .where(and(eq(verses.id, input.id), isNotebookVerse(input.userId)))
     .returning();
 
-  return verse;
+  return verse && decodeVerse(verse, input.userId);
 }
 
 export async function deleteNotebookVerse(input: {

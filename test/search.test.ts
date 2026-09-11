@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   MAX_SEARCH_LENGTH,
+  excerptAround,
   highlightSegments,
-  likePattern,
+  matchesQuery,
   normalizeSearchQuery,
 } from "@/lib/search";
 
@@ -29,18 +30,59 @@ describe("normalizeSearchQuery", () => {
   });
 });
 
-describe("likePattern", () => {
-  it("wraps the query as a substring match", () => {
-    expect(likePattern("pawn")).toBe("%pawn%");
+describe("matchesQuery", () => {
+  it("matches a substring anywhere in the text", () => {
+    expect(matchesQuery("a bar about a pawn shop", "pawn")).toBe(true);
+    expect(matchesQuery("a bar about a pawn shop", "bodega")).toBe(false);
   });
 
-  it("escapes wildcards so they match themselves", () => {
-    expect(likePattern("50%")).toBe("%50\\%%");
-    expect(likePattern("a_b")).toBe("%a\\_b%");
+  it("ignores case on both sides", () => {
+    expect(matchesQuery("PAWN shop", "pawn")).toBe(true);
+    expect(matchesQuery("pawn shop", "PAWN")).toBe(true);
   });
 
-  it("escapes a backslash without escaping its own escapes", () => {
-    expect(likePattern("back\\slash")).toBe("%back\\\\slash%");
+  it("treats wildcards as the characters they are", () => {
+    expect(matchesQuery("up 50% on the month", "50%")).toBe(true);
+    expect(matchesQuery("nothing like it", "50%")).toBe(false);
+    expect(matchesQuery("a_b", "a_b")).toBe(true);
+    expect(matchesQuery("axb", "a_b")).toBe(false);
+  });
+});
+
+describe("excerptAround", () => {
+  const long = "x".repeat(400);
+
+  it("returns a short body whole, unmarked", () => {
+    expect(excerptAround("one bar", null)).toBe("one bar");
+  });
+
+  it("returns the top of a long body when there is no query", () => {
+    const excerpt = excerptAround(long, null);
+    expect(excerpt.startsWith("...")).toBe(false);
+    expect(excerpt.endsWith("...")).toBe(true);
+  });
+
+  it("starts ahead of the hit so the match lands in context", () => {
+    const body = `${"a".repeat(300)}pawn shop${"b".repeat(300)}`;
+    const excerpt = excerptAround(body, "pawn");
+
+    expect(excerpt).toContain("pawn shop");
+    expect(excerpt.startsWith("...a")).toBe(true);
+    expect(excerpt.indexOf("pawn")).toBeGreaterThan(3);
+  });
+
+  it("starts at the top when the query is not in the body", () => {
+    const body = `opening bar${"c".repeat(400)}`;
+    expect(excerptAround(body, "nowhere").startsWith("opening bar")).toBe(true);
+  });
+
+  it("matches case-insensitively, like the search that selected the row", () => {
+    const body = `${"a".repeat(300)}PAWN shop`;
+    expect(excerptAround(body, "pawn")).toContain("PAWN shop");
+  });
+
+  it("says nothing about an empty body", () => {
+    expect(excerptAround("", "pawn")).toBe("");
   });
 });
 

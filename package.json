@@ -12,7 +12,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "db:encrypt-verses": "tsx scripts/encrypt-verses.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.39.6",
