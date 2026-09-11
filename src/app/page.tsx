@@ -6,10 +6,15 @@ import { JsonLd } from "@/components/json-ld";
 import { PromptCard } from "@/components/prompt-card";
 import { SetupNotice } from "@/components/setup-notice";
 import { SignedOutPad } from "@/components/signed-out-pad";
+import { StreakFlame } from "@/components/streak-flame";
 import { VersePad } from "@/components/verse-pad";
 import { getUserId } from "@/lib/auth";
 import { formatPromptDate } from "@/lib/date";
-import { getOrCreateTodayPrompt, getVerseForPrompt } from "@/lib/db/queries";
+import {
+  getOrCreateTodayPrompt,
+  getStreak,
+  getVerseForPrompt,
+} from "@/lib/db/queries";
 import type { DailyPrompt, Verse } from "@/lib/db/schema";
 import { clampDescription } from "@/lib/site";
 import { dailyPromptGraph, faqGraph, howToGraph } from "@/lib/structured-data";
@@ -22,6 +27,7 @@ export const dynamic = "force-dynamic";
 interface Today {
   prompt: DailyPrompt;
   verse: Verse | undefined;
+  streak: number;
   signedIn: boolean;
 }
 
@@ -35,8 +41,14 @@ interface Today {
 const loadToday = cache(async function loadToday(): Promise<Today> {
   const userId = await getUserId();
   const prompt = await getOrCreateTodayPrompt();
-  const verse = userId ? await getVerseForPrompt(prompt.id, userId) : undefined;
-  return { prompt, verse, signedIn: Boolean(userId) };
+  // Two reads of the same person's verses; neither waits on the other.
+  const [verse, streak] = userId
+    ? await Promise.all([
+        getVerseForPrompt(prompt.id, userId),
+        getStreak(userId),
+      ])
+    : [undefined, 0];
+  return { prompt, verse, streak, signedIn: Boolean(userId) };
 });
 
 // A title carrying the day's actual concept is what makes this page worth
@@ -74,11 +86,16 @@ export default async function TodayPage() {
     return <SetupNotice error={error} />;
   }
 
-  const { prompt, verse, signedIn } = today;
+  const { prompt, verse, streak, signedIn } = today;
 
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-10 p-4 sm:p-8">
       <div className="flex flex-col gap-6">
+        {/* The first thing a returning writer sees, above the day's prompt:
+            what they have going, and what it would cost to drop it. Signed
+            out there is no streak to show and no account to hang one on. */}
+        {signedIn ? <StreakFlame streak={streak} /> : null}
+
         <div className="flex flex-col gap-2">
           {/* The one <h1> on the site. It names what a searcher typed rather
               than the brand: nobody searches "Sixteen", they search for a rap
