@@ -323,7 +323,30 @@ npm run lint
 
 Schema changes go in `src/lib/db/schema.ts`. Run `npm run db:generate` to
 produce a new file under `drizzle/`, review it, then `npm run db:migrate` to
-apply it.
+apply it locally. Deploys apply it themselves - see below.
+
+## Migrations on deploy
+
+`vercel-build` runs `scripts/migrate-on-deploy.mjs` before `next build`, and
+Vercel prefers that script over `build`. So every deploy applies whatever is
+pending in `drizzle/` before the code that needs it starts serving.
+
+This is not a convenience. A migration applied by hand is a migration someone
+has to notice is needed, on the one deploy out of twenty that carries a new
+file in `drizzle/`; miss it and the app ships against a schema that doesn't
+match it. Nothing fails at build time, nothing fails on the pages that don't
+touch the new column, and the breakage surfaces as a feature that just doesn't
+work for whoever tries it first.
+
+Two things follow from where the script runs:
+
+- A build with no `DATABASE_URL` skips migrating rather than failing, because
+  the first deploy below is a bare import with no environment variables and
+  that build is meant to succeed.
+- A build whose `DATABASE_URL` is set migrates that database, preview builds
+  included. If preview deployments ever get a database of their own, they
+  will migrate that one; while they share production's, a preview build
+  migrates production.
 
 ## The daily cron
 
@@ -352,13 +375,15 @@ and is race-safe if two requests land at once.
    root, so no root-directory configuration is needed.
 2. Deploy. The build succeeds with no environment variables set, though the
    deployed app returns `503` on every protected route until step 3 and the
-   redeploy in step 5.
+   redeploy in step 4.
 3. In the project's Vercel dashboard, add the environment variables from the
    table above - at minimum `DATABASE_URL`, `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`,
    `CLERK_SECRET_KEY`, and `CRON_SECRET`.
-4. Run `npm run db:migrate` against the production `DATABASE_URL` (from your
-   machine, or a one-off script) to create the tables.
-5. Redeploy so the new environment variables take effect. Vercel Cron picks
-   up the schedule in `vercel.json` automatically, and runs against
-   production deployments only - preview deployments rely on the on-demand
-   generation in `getOrCreateTodayPrompt()` instead.
+4. Redeploy. With `DATABASE_URL` now set, the build creates the tables on its
+   way past - the first deploy in step 2 had nothing to migrate. Every later
+   deploy applies any new migration the same way, so this is the only time
+   the step needs thinking about.
+
+Vercel Cron picks up the schedule in `vercel.json` automatically, and runs
+against production deployments only - preview deployments rely on the
+on-demand generation in `getOrCreateTodayPrompt()` instead.
