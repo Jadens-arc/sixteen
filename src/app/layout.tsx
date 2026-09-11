@@ -7,6 +7,7 @@ import { Analytics } from "@vercel/analytics/next";
 import { AuthButtons } from "@/components/auth-buttons";
 import { JsonLd } from "@/components/json-ld";
 import { Toaster } from "@/components/ui/sonner";
+import { clerkAppearance } from "@/lib/clerk-appearance";
 import {
   siteDescription,
   siteKeywords,
@@ -199,6 +200,7 @@ export default function RootLayout({
   // Portal at accounts.<domain> instead of the sign-in page this app ships.
   return (
     <ClerkProvider
+      appearance={clerkAppearance}
       signInUrl="/sign-in"
       signUpUrl="/sign-up"
       signInFallbackRedirectUrl="/"
