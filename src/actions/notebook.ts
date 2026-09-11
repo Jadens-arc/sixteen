@@ -3,28 +3,37 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-import { MAX_VERSE_LENGTH } from "@/lib/bars";
+import { MAX_SEALED_LENGTH, MAX_VERSE_LENGTH } from "@/lib/bars";
 import { requireUserId } from "@/lib/auth";
 import {
   createNotebookVerse,
   deleteNotebookVerse,
   updateNotebookVerse,
+  type VerseView,
 } from "@/lib/db/queries";
-import type { Verse } from "@/lib/db/schema";
+import { resolveBodyInput } from "@/lib/vault-policy";
 
 // Same reasoning as src/actions/verse.ts: a server action is a public endpoint
 // and its argument types are gone by the time it runs, so the boundary parses
 // rather than trusts. requireUserId() is what scopes each of these to one
 // person's notebook - the queries take the id it returns and match on it.
-const bodySchema = z.string().max(MAX_VERSE_LENGTH);
+const bodySchema = z.string().max(MAX_SEALED_LENGTH);
+const barCountSchema = z.number().int().min(0).max(MAX_VERSE_LENGTH).optional();
 
-const createSchema = z.object({ body: bodySchema });
-const saveSchema = z.object({ id: z.uuid(), body: bodySchema });
+const createSchema = z.object({ body: bodySchema, barCount: barCountSchema });
+const saveSchema = z.object({
+  id: z.uuid(),
+  body: bodySchema,
+  barCount: barCountSchema,
+});
 const deleteSchema = z.object({ id: z.uuid() });
 
-export async function createVerseNote(input: { body: string }): Promise<Verse> {
+export async function createVerseNote(input: {
+  body: string;
+  barCount?: number;
+}): Promise<VerseView> {
   const userId = await requireUserId();
-  const { body } = createSchema.parse(input);
+  const { body, barCount } = createSchema.parse(input);
 
   // No revalidatePath("/notebook") here, deliberately. This action fires from
   // a pad someone is still typing in, and a revalidating action makes the
@@ -32,17 +41,25 @@ export async function createVerseNote(input: { body: string }): Promise<Verse> {
   // the URL for the new verse's, is a different route segment and so a remount
   // on top of live keystrokes. The list is force-dynamic and the client cache
   // holds dynamic segments for zero seconds, so it reads the new row anyway.
-  return createNotebookVerse({ userId, body });
+  return createNotebookVerse({
+    userId,
+    body: await resolveBodyInput(userId, { body, barCount }),
+  });
 }
 
 export async function saveVerseNote(input: {
   id: string;
   body: string;
-}): Promise<Verse> {
+  barCount?: number;
+}): Promise<VerseView> {
   const userId = await requireUserId();
-  const { id, body } = saveSchema.parse(input);
+  const { id, body, barCount } = saveSchema.parse(input);
 
-  const verse = await updateNotebookVerse({ id, userId, body });
+  const verse = await updateNotebookVerse({
+    id,
+    userId,
+    body: await resolveBodyInput(userId, { body, barCount }),
+  });
   // Somebody else's verse, a daily verse, or one that has been deleted. All
   // three read the same from here, which is the point.
   if (!verse) throw new Error("That verse is not in your notebook.");

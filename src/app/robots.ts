@@ -7,7 +7,14 @@ import { absoluteUrl, siteUrl } from "@/lib/site";
 // crawler queue them wastes the crawl budget that should go to the one page
 // that changes every morning. Disallowing them is not a privacy control -
 // requireUserId() is - it just keeps them out of the index.
-const PRIVATE_PATHS = ["/archive", "/notebook", "/sign-in", "/sign-up", "/api/"];
+const PRIVATE_PATHS = [
+  "/archive",
+  "/notebook",
+  "/settings",
+  "/sign-in",
+  "/sign-up",
+  "/api/",
+];
 
 export default function robots(): MetadataRoute.Robots {
   return {

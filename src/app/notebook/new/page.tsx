@@ -28,7 +28,7 @@ export default async function NewNotebookVersePage() {
         &larr; Notebook
       </Link>
 
-      <NotebookPad id={null} initialBody="" />
+      <NotebookPad id={null} initialBody="" initialSealed={false} />
     </main>
   );
 }

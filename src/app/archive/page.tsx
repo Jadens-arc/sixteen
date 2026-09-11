@@ -24,10 +24,6 @@ async function loadArchive(
   return { entries, streak };
 }
 
-function countLabel(count: number): string {
-  return count === 1 ? "1 match" : `${count} matches`;
-}
-
 export default async function ArchivePage({
   searchParams,
 }: {
@@ -57,12 +53,6 @@ export default async function ArchivePage({
           query={query ?? ""}
           placeholder="Search your verses and prompts"
         />
-        {query ? (
-          <p className="text-muted-foreground text-xs">
-            {countLabel(archive.entries.length)} for &ldquo;{query}&rdquo; - searching
-            concepts, scenarios and your verses.
-          </p>
-        ) : null}
       </div>
 
       <ArchiveList entries={archive.entries} query={query} />

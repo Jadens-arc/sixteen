@@ -1,8 +1,10 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { ArchiveList } from "@/components/archive-list";
 import type { ArchiveEntry } from "@/lib/db/queries";
+
+vi.mock("@/lib/crypto/vault-context", async () => (await import("./vault-mock")).vaultModuleMock());
 
 function entry(overrides: Partial<ArchiveEntry> = {}): ArchiveEntry {
   return {
@@ -19,8 +21,12 @@ function entry(overrides: Partial<ArchiveEntry> = {}): ArchiveEntry {
       model: null,
       createdAt: new Date("2026-03-04T10:00:00Z"),
     },
-    verse: { barCount: 8, completedAt: null },
-    excerpt: "traded the chain for a ticket",
+    verse: {
+      sealed: false,
+      barCount: 8,
+      completedAt: null,
+      excerpt: "traded the chain for a ticket",
+    },
     ...overrides,
   };
 }
@@ -42,7 +48,7 @@ describe("ArchiveList", () => {
   });
 
   it("leaves the excerpt out when nothing is written yet", () => {
-    render(<ArchiveList entries={[entry({ verse: null, excerpt: null })]} />);
+    render(<ArchiveList entries={[entry({ verse: null })]} />);
 
     expect(screen.getByText("Not started")).toBeInTheDocument();
     expect(screen.queryByTestId("bar-segment")).not.toBeInTheDocument();

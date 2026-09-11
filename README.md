@@ -88,12 +88,14 @@ plain `GET` with JavaScript off.
 Two details are worth knowing:
 
 - **The bodies never reach the browser.** Postgres cannot search a verse it
-  cannot read - see [Encryption at rest](#encryption-at-rest) - so the
-  matching and the excerpting happen on the server, in `matchesQuery()` and
-  `excerptAround()` (`src/lib/search.ts`). A search decrypts a bounded window
-  of rows, the most recent 500, and sends on a 180-character excerpt of each
-  hit. The page renders two lines of a verse and is still handed two lines of
-  it; 60 rows of `MAX_VERSE_LENGTH` bodies would be megabytes.
+  cannot read - see [Encryption at rest](#encryption-at-rest) - so the matching
+  and the excerpting happen on the server, in `matchesQuery()` and
+  `excerptAround()` (`src/lib/search.ts`). A search reads the rows, keeps the
+  bodies, and sends on a 180-character excerpt of each hit; 60 rows of
+  `MAX_VERSE_LENGTH` bodies would be megabytes on a page that renders two lines
+  of one. An account with a [passphrase](#the-passphrase-optional-per-person) is
+  the exception - nothing there is searchable server-side, so those rows travel
+  and the same two functions run in the browser instead.
 - **Wildcards are literal.** A substring search in JavaScript has none, so
   `50%` finds the bar with `50%` in it without anything having to arrange
   that. This used to take a `likePattern()` helper escaping `%`, `_` and `\`
@@ -227,6 +229,92 @@ not the writing. The prompts are identical for everyone and already public on
 the home page. A body's length also shows through in its ciphertext's length,
 as it does in any scheme shaped like this one.
 
+## The passphrase (optional, per person)
+
+Everything above protects a verse from a stolen database. It does not protect
+it from the application, which holds the key so that pages can render and
+searches can run - so it cannot honestly say *only you can read this*. The
+setting on `/settings` can.
+
+Turning it on generates a data key in the browser, seals every verse with it,
+and hands the server nothing but ciphertext and a copy of that key wrapped
+under a passphrase the server never receives. `src/lib/crypto/client.ts` is
+that half; `src/lib/crypto/envelope.ts` is the format both halves share, so a
+verse sealed in a browser and a verse sealed on the server are the same kind of
+value with a different version in it:
+
+```
+sixteen.v1.<key id>.<iv>.<ciphertext>   sealed with VERSE_ENCRYPTION_KEY
+sixteen.v2.<key id>.<iv>.<ciphertext>   sealed with the writer's own key
+```
+
+Per-user and optional, not global: an account with no passphrase keeps
+server-side search and server-rendered pads exactly as before. That is also why
+this could ship without the searchable-encryption index a global version would
+have needed.
+
+### The passphrase never encrypts a verse
+
+It derives a wrapping key (PBKDF2-SHA256, 600k iterations) which encrypts a
+random data key, and the data key is what seals verses. Two things follow, and
+both matter more than the indirection costs:
+
+- Changing the passphrase rewraps one small value instead of re-encrypting
+  every verse - and every verse already sealed stays readable, because the data
+  key itself never changed.
+- The same data key is wrapped a second time under a **recovery code**, which
+  is the only way back in that does not depend on memory.
+
+The enable flow shows that code and **makes you type it back before anything is
+sealed**. That step is not politeness. A code shown once and clicked past is a
+code nobody has, and the day it matters is the day the passphrase is forgotten -
+by which point nobody, including whoever runs this app, can do anything at all.
+
+### Mixed accounts are normal, not an error state
+
+Conversion runs one verse at a time, each its own write, with no transaction
+across them. Close the laptop halfway and the account holds some `v2` verses and
+some `v1` ones - which every read path already handles, because the format is in
+the value. Reopening the page picks up where it stopped.
+
+That property is what makes the whole feature safe to ship, and it is worth not
+breaking. It is also why `user_keys.state` exists: while the state is
+`unsealing` the server accepts readable bodies again, and the key record is
+deleted only once `countVersesSealed()` returns zero. Deleting it early would
+strand verses behind a wrapped key that no longer exists - the one mistake here
+that cannot be undone.
+
+### What the server refuses
+
+`resolveBodyInput()` in `src/lib/vault-policy.ts` decides what a save is allowed
+to be, and it refuses in both directions:
+
+- An account with no passphrase may not send a sealed body. Storing one would
+  create a verse no key could ever open.
+- An account with a passphrase may not send a readable one. That is a client bug
+  that looks exactly like a working save, and it would leak the writing the
+  passphrase was turned on to protect.
+
+An account midway through unsealing is the one exception, and it is the state
+that exists precisely to be it.
+
+### What it costs
+
+Honest list:
+
+- **Search moves into the browser.** The server sends every sealed row for a
+  search and the browser filters them, because it is the only side that can.
+  Fast for a notebook of a few hundred verses; a corpus in the thousands would
+  want the searchable-index design instead.
+- **The sixteen-bar gate becomes advisory.** `completeVerse()` cannot count bars
+  it cannot read, so it trusts the count the browser stored alongside the verse.
+- **Verse bodies stop server-rendering** for that account. `<SealedBody>` opens
+  them client-side and shows the unlock prompt when the key is missing.
+- **XSS matters more.** The key is held as a non-extractable `CryptoKey`, in
+  memory and (for "stay unlocked on this device") in IndexedDB, so script on the
+  page could use it but not copy it out. That is the best a browser offers short
+  of asking for the passphrase on every load.
+
 ## Environment variables
 
 See `.env.example` for the same list with inline comments.
@@ -248,6 +336,9 @@ See `.env.example` for the same list with inline comments.
 | `CRON_SECRET` | Recommended | Bearer token the cron route requires. If unset, the guard is skipped in development but the route rejects every request in production. |
 | `VERSE_ENCRYPTION_KEY` | Recommended | 32-byte key that verse bodies are encrypted with at rest: base64 (`openssl rand -base64 32`) or 64 hex characters. Unset means verses are stored as plain text, as they were before this existed. A verse encrypted under a key that is lost cannot be read by anyone. See [Encryption at rest](#encryption-at-rest). |
 | `VERSE_ENCRYPTION_KEY_PREVIOUS` | No | The previous key, while rotating. Decrypt-only: verses it wrote keep opening, new writes use `VERSE_ENCRYPTION_KEY`. |
+
+The passphrase setting needs no environment variable at all - its keys are
+made in the browser and stored wrapped, in `user_keys`.
 
 Nothing here is required for `npm run build` to succeed - the app is meant
 to deploy to Vercel before any of these are set, then have them added in the
@@ -276,8 +367,8 @@ a misconfigured deploy shows on the home page - a notice instead of a plain
 `src/middleware.ts` lists the routes that don't require a session: `/`,
 `/sign-in`, `/sign-up`, `/api/cron`, and the crawler routes in
 `src/lib/crawler-routes.ts` (`/robots.txt`, `/sitemap.xml`, `/llms.txt`, the
-generated share images). Everything else - the archive and the whole notebook
-included - needs one. `/` is public so a visitor can read
+generated share images). Everything else - the archive, the whole notebook and
+`/settings` included - needs one. `/` is public so a visitor can read
 the day's prompt before deciding to sign up - `src/app/page.tsx` calls
 `getUserId()` rather than `requireUserId()` and swaps the pad for
 `<SignedOutPad />`, which opens Clerk's sign-up modal on the first click.
@@ -292,7 +383,7 @@ middleware's list can widen without widening what a signed-out caller can do.
 Clerk session by design and is guarded by `CRON_SECRET` instead, so the daily
 prompt job keeps running through a Clerk misconfiguration.
 
-`/`, `/archive`, `/archive/<date>` and every `/notebook` route are
+`/`, `/archive`, `/archive/<date>`, `/settings` and every `/notebook` route are
 `force-dynamic` so they're never prerendered at build time, and a missing `DATABASE_URL` (or any other setup problem) surfaces as an
 in-app notice at request time instead of a stack trace.
 

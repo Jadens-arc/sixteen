@@ -1,14 +1,17 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { NotebookList } from "@/components/notebook-list";
 import type { NotebookEntry } from "@/lib/db/queries";
 
-function entry(overrides: Partial<NotebookEntry> = {}): NotebookEntry {
+vi.mock("@/lib/crypto/vault-context", async () => (await import("./vault-mock")).vaultModuleMock());
+
+function entry(overrides: Partial<Extract<NotebookEntry, { sealed: false }>> = {}): NotebookEntry {
   return {
     id: "note-1",
     barCount: 4,
     updatedAt: new Date("2026-03-04T15:00:00Z"),
+    sealed: false,
     opening: "traded the chain for a ticket\nsecond bar here",
     excerpt: "traded the chain for a ticket\nsecond bar here",
     ...overrides,

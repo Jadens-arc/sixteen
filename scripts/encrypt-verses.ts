@@ -2,12 +2,12 @@ import { and, asc, eq, gt } from "drizzle-orm";
 
 import { db } from "../src/lib/db/client";
 import { verses } from "../src/lib/db/schema";
+import { isSealed } from "../src/lib/crypto/envelope";
 import {
-  decryptVerseBody,
-  encryptVerseBody,
-  isEncryptedVerseBody,
-  verseEncryptionEnabled,
-} from "../src/lib/verse-crypto";
+  readStoredBody,
+  sealWithServerKey,
+  serverEncryptionEnabled,
+} from "../src/lib/crypto/server";
 
 /**
  * Encrypts verses that were written before encryption was turned on.
@@ -41,11 +41,15 @@ interface Counts {
   changedUnderneath: number;
 }
 
+// A verse sealed in somebody's browser is counted here and then left alone.
+// The server key cannot open it and has no business trying: that account
+// chose a passphrase, and this script has nothing to offer it.
+
 async function main(): Promise<void> {
   if (!process.env.DATABASE_URL) {
     throw new Error("DATABASE_URL is not set - there is no database to read.");
   }
-  if (!verseEncryptionEnabled()) {
+  if (!serverEncryptionEnabled()) {
     throw new Error(
       "VERSE_ENCRYPTION_KEY is not set. Set it to the key this deployment " +
         "writes with, or there is nothing to encrypt these verses with.",
@@ -78,13 +82,14 @@ async function main(): Promise<void> {
         counts.empty += 1;
         continue;
       }
-      if (isEncryptedVerseBody(verse.body)) {
+      if (isSealed(verse.body)) {
         counts.alreadyEncrypted += 1;
         continue;
       }
 
-      const stored = encryptVerseBody(verse.body, verse.userId);
-      if (decryptVerseBody(stored, verse.userId) !== verse.body) {
+      const stored = sealWithServerKey(verse.body, verse.userId);
+      const readBack = readStoredBody(stored, verse.userId);
+      if (readBack.kind !== "plaintext" || readBack.body !== verse.body) {
         throw new Error(
           `Verse ${verse.id} did not read back as what it was. Nothing was ` +
             "written for it; the row is unchanged. Check VERSE_ENCRYPTION_KEY.",
@@ -109,7 +114,8 @@ async function main(): Promise<void> {
 
   console.log(
     `Encrypted ${counts.encrypted} verses. ` +
-      `${counts.alreadyEncrypted} were already encrypted, ${counts.empty} were empty.`,
+      `${counts.alreadyEncrypted} were already sealed (by this key, a previous ` +
+      `one, or somebody's passphrase), and ${counts.empty} were empty.`,
   );
   if (counts.changedUnderneath > 0) {
     console.log(

@@ -5,9 +5,11 @@ import { useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { createVerseNote, deleteVerseNote, saveVerseNote } from "@/actions/notebook";
+import { SealedBody } from "@/components/sealed-body";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { MAX_VERSE_LENGTH, countBars } from "@/lib/bars";
+import { useVault } from "@/lib/crypto/vault-context";
 import { SAVE_STATUS_LABEL, useAutosave } from "@/lib/use-autosave";
 import { cn } from "@/lib/utils";
 
@@ -20,7 +22,7 @@ function barLabel(count: number): string {
  * in the database - the first autosave is what creates one - so opening the
  * notebook, thinking better of it and leaving costs nothing and leaves nothing.
  */
-export function NotebookPad({
+function Pad({
   id: initialId,
   initialBody,
 }: {
@@ -28,6 +30,7 @@ export function NotebookPad({
   initialBody: string;
 }) {
   const router = useRouter();
+  const { toSaved } = useVault();
   const [id, setId] = useState(initialId);
   const [body, setBody] = useState(initialBody);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
@@ -36,18 +39,27 @@ export function NotebookPad({
   // A create is slower than the debounce that started it, so a fast writer can
   // reach a second save while the first is still in flight. Both wait on this
   // one promise rather than each inserting a row of their own.
-  const pendingCreate = useRef<Promise<{ id: string; body: string }> | null>(null);
+  const pendingCreate = useRef<Promise<{ id: string }> | null>(null);
+
+  // What was sent for the create, so the racing save below can tell whether it
+  // still has something newer to write. Comparing against what came back is no
+  // use once bodies are sealed: the same writing seals to different ciphertext
+  // every time, so every comparison would look like a change.
+  const createdFrom = useRef<string | null>(null);
 
   async function persist(next: string) {
     if (id) {
-      await saveVerseNote({ id, body: next });
+      await saveVerseNote({ id, ...(await toSaved(next)) });
       return;
     }
 
-    pendingCreate.current ??= createVerseNote({ body: next }).catch((error) => {
+    createdFrom.current ??= next;
+    const payload = await toSaved(next);
+    pendingCreate.current ??= createVerseNote(payload).catch((error) => {
       // Clear the slot so the next keystroke starts a new attempt instead of
       // awaiting a promise that has already rejected.
       pendingCreate.current = null;
+      createdFrom.current = null;
       throw error;
     });
 
@@ -67,7 +79,9 @@ export function NotebookPad({
 
     // The save that lost the race carries newer text than the one that created
     // the row, so it still has something to write.
-    if (created.body !== next) await saveVerseNote({ id: created.id, body: next });
+    if (createdFrom.current !== next) {
+      await saveVerseNote({ id: created.id, ...(await toSaved(next)) });
+    }
   }
 
   const status = useAutosave({
@@ -153,5 +167,21 @@ export function NotebookPad({
         </div>
       ) : null}
     </div>
+  );
+}
+
+export function NotebookPad({
+  id,
+  initialBody,
+  initialSealed,
+}: {
+  id: string | null;
+  initialBody: string;
+  initialSealed: boolean;
+}) {
+  return (
+    <SealedBody stored={initialBody} sealed={initialSealed}>
+      {(body) => <Pad id={id} initialBody={body} />}
+    </SealedBody>
   );
 }

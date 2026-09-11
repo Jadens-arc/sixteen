@@ -5,13 +5,21 @@ import { toast } from "sonner";
 
 import { completeVerse, saveVerse } from "@/actions/verse";
 import { BarMeter } from "@/components/bar-meter";
+import { SealedBody } from "@/components/sealed-body";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { BAR_TARGET, MAX_VERSE_LENGTH, countBars } from "@/lib/bars";
+import { useVault } from "@/lib/crypto/vault-context";
 import { SAVE_STATUS_LABEL, useAutosave } from "@/lib/use-autosave";
 import { cn } from "@/lib/utils";
 
-export function VersePad({
+/**
+ * The pad, once the verse is readable. Split from the wrapper below so that it
+ * mounts with the real text already in hand: its autosave compares against
+ * whatever it started with, and starting empty would make the first render
+ * look like an edit and write it straight back.
+ */
+function Pad({
   promptId,
   initialBody,
   initialCompletedAt,
@@ -20,6 +28,7 @@ export function VersePad({
   initialBody: string;
   initialCompletedAt: string | null;
 }) {
+  const { toSaved } = useVault();
   const [body, setBody] = useState(initialBody);
   const [completedAt, setCompletedAt] = useState(initialCompletedAt);
   const [isCompleting, setIsCompleting] = useState(false);
@@ -38,7 +47,10 @@ export function VersePad({
   const status = useAutosave({
     value: body,
     save: async (next) => {
-      await saveVerse({ promptId, body: next });
+      // toSaved() seals the verse when this account has a passphrase, and
+      // hands back the bar count with it - the server cannot count what it
+      // cannot read.
+      await saveVerse({ promptId, ...(await toSaved(next)) });
     },
     onError: () => toast.error("Could not save your verse. Check your connection."),
   });
@@ -96,5 +108,29 @@ export function VersePad({
         )}
       </div>
     </div>
+  );
+}
+
+export function VersePad({
+  promptId,
+  initialBody,
+  initialSealed,
+  initialCompletedAt,
+}: {
+  promptId: string;
+  initialBody: string;
+  initialSealed: boolean;
+  initialCompletedAt: string | null;
+}) {
+  return (
+    <SealedBody stored={initialBody} sealed={initialSealed}>
+      {(body) => (
+        <Pad
+          promptId={promptId}
+          initialBody={body}
+          initialCompletedAt={initialCompletedAt}
+        />
+      )}
+    </SealedBody>
   );
 }

@@ -1,7 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { encryptVerseBody, isEncryptedVerseBody } from "@/lib/verse-crypto";
+import { isSealed, isUserSealed } from "@/lib/crypto/envelope";
+import { sealWithServerKey } from "@/lib/crypto/server";
 
 // One chainable stand-in for a drizzle query builder: every method returns it
 // and awaiting it hands back the rows the test set up. The queries under test
@@ -64,9 +65,19 @@ function plaintextRow(body: string) {
   return { id: "verse_1", userId: USER, body, barCount: 3, updatedAt: new Date() };
 }
 
-/** What the row looks like now. */
+/** What the row looks like once the server key is configured. */
 function encryptedRow(body: string) {
-  return { ...plaintextRow(body), body: encryptVerseBody(body, USER) };
+  return { ...plaintextRow(body), body: sealWithServerKey(body, USER) };
+}
+
+// Stands in for a browser: the server must pass these on without opening them,
+// so their contents never matter here - only their shape.
+function userSealed(marker: string) {
+  const iv = "A".repeat(16);
+  const payload = Buffer.from(marker.padEnd(48, "."))
+    .toString("base64url")
+    .padEnd(64, "B");
+  return `sixteen.v2.abcdef012345.${iv}.${payload}`;
 }
 
 beforeEach(() => {
@@ -83,12 +94,15 @@ describe("writing a verse", () => {
     const { node, calls } = builder([encryptedRow(VERSE)]);
     mocks.insert.mockReturnValue(node);
 
-    const verse = await createNotebookVerse({ userId: USER, body: VERSE });
+    const verse = await createNotebookVerse({
+      userId: USER,
+      body: { sealed: false, body: VERSE },
+    });
 
     const [values] = calls.find((call) => call.method === "values")!.args as [
       { body: string; barCount: number },
     ];
-    expect(isEncryptedVerseBody(values.body)).toBe(true);
+    expect(isSealed(values.body)).toBe(true);
     expect(values.body).not.toContain("pawn shop");
     // Counted from the writing, not from the ciphertext.
     expect(values.barCount).toBe(3);
@@ -100,12 +114,16 @@ describe("writing a verse", () => {
     const { node, calls } = builder([encryptedRow(VERSE)]);
     mocks.insert.mockReturnValue(node);
 
-    const verse = await upsertVerse({ promptId: PROMPT_ID, userId: USER, body: VERSE });
+    const verse = await upsertVerse({
+      promptId: PROMPT_ID,
+      userId: USER,
+      body: { sealed: false, body: VERSE },
+    });
 
     const [values] = calls.find((call) => call.method === "values")!.args as [
       { body: string },
     ];
-    expect(isEncryptedVerseBody(values.body)).toBe(true);
+    expect(isSealed(values.body)).toBe(true);
     expect(verse.body).toBe(VERSE);
   });
 
@@ -114,7 +132,11 @@ describe("writing a verse", () => {
     mocks.update.mockReturnValue(node);
 
     const { updateNotebookVerse } = await import("@/lib/db/queries");
-    await updateNotebookVerse({ id: "verse_1", userId: USER, body: "" });
+    await updateNotebookVerse({
+      id: "verse_1",
+      userId: USER,
+      body: { sealed: false, body: "" },
+    });
 
     const [set] = calls.find((call) => call.method === "set")!.args as [{ body: string }];
     expect(set.body).toBe("");
@@ -147,6 +169,8 @@ describe("the notebook list", () => {
     mocks.select.mockReturnValue(builder([encryptedRow(VERSE)]).node);
 
     const [entry] = await listNotebook(USER);
+    expect(entry.sealed).toBe(false);
+    if (entry.sealed) return;
     expect(entry.opening.startsWith("cold open in the pawn shop")).toBe(true);
     expect(entry.excerpt).toContain("pawn shop");
   });
@@ -161,6 +185,16 @@ describe("the notebook list", () => {
 
     const entries = await listNotebook(USER, "pawn");
     expect(entries.map((entry) => entry.id)).toEqual(["verse_1"]);
+  });
+
+  it("hands a sealed verse over for the browser to name and search", async () => {
+    const sealed = userSealed("hidden");
+    mocks.select.mockReturnValue(builder([{ ...plaintextRow(""), body: sealed }]).node);
+
+    const [entry] = await listNotebook(USER, "pawn");
+    expect(entry.sealed).toBe(true);
+    expect(entry.sealed && entry.body).toBe(sealed);
+    expect(isUserSealed(entry.sealed ? entry.body : "")).toBe(true);
   });
 
   it("searches verses from before encryption alongside encrypted ones", async () => {
@@ -179,15 +213,22 @@ describe("the notebook list", () => {
 describe("the archive list", () => {
   const row = (concept: string, body: string | null) => ({
     prompt: prompt(concept),
-    verse: body === null ? null : { barCount: 3, completedAt: null, body: encryptVerseBody(body, USER) },
+    verse:
+      body === null
+        ? null
+        : { barCount: 3, completedAt: null, body: sealWithServerKey(body, USER) },
   });
 
   it("excerpts the verse without handing the body over", async () => {
     mocks.select.mockReturnValue(builder([row("a concept", VERSE)]).node);
 
     const [entry] = await listArchive(USER);
-    expect(entry.excerpt).toContain("pawn shop");
-    expect(entry.verse).toEqual({ barCount: 3, completedAt: null });
+    expect(entry.verse).toEqual({
+      sealed: false,
+      barCount: 3,
+      completedAt: null,
+      excerpt: expect.stringContaining("pawn shop"),
+    });
     expect(entry.verse).not.toHaveProperty("body");
   });
 
@@ -205,6 +246,29 @@ describe("the archive list", () => {
       "a concept",
       "pawn shop",
     ]);
+  });
+
+  // The server has no way to match these, so it must hand every one of them
+  // over for the browser to filter - dropping them would be a search that
+  // silently misses the verses the passphrase was turned on to protect.
+  it("passes a sealed verse on unopened and unfiltered", async () => {
+    const sealed = userSealed("hidden");
+    mocks.select.mockReturnValue(
+      builder([
+        {
+          prompt: prompt("a concept"),
+          verse: { barCount: 3, completedAt: null, body: sealed },
+        },
+      ]).node,
+    );
+
+    const [entry] = await listArchive(USER, "nothing like it");
+    expect(entry.verse).toEqual({
+      sealed: true,
+      barCount: 3,
+      completedAt: null,
+      body: sealed,
+    });
   });
 
   it("keeps a day with no verse out of a body search", async () => {

@@ -15,6 +15,13 @@
       "when": 1789008948499,
       "tag": "0001_adorable_guardian",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789110721376,
+      "tag": "0002_purple_ultron",
+      "breakpoints": true
     }
   ]
 }

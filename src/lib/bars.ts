@@ -5,6 +5,12 @@ export const BAR_TARGET = 16;
 // row - and the archive query that reads it back - a bounded size.
 export const MAX_VERSE_LENGTH = 20_000;
 
+// The same ceiling for a body that arrives already sealed. Ciphertext is
+// base64 over the UTF-8 bytes plus an envelope header, so it runs comfortably
+// under twice the text it carries; this is that with room to spare, and it is
+// what the server checks when it cannot read the writing to measure it.
+export const MAX_SEALED_LENGTH = 60_000;
+
 function nonEmptyLines(body: string): string[] {
   return body.split("\n").filter((line) => line.trim().length > 0);
 }

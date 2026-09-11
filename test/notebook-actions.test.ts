@@ -4,6 +4,7 @@ import { MAX_VERSE_LENGTH } from "@/lib/bars";
 
 const mocks = vi.hoisted(() => ({
   auth: vi.fn<() => Promise<{ userId: string | null }>>(),
+  getUserKey: vi.fn(),
   createNotebookVerse: vi.fn(),
   updateNotebookVerse: vi.fn(),
   deleteNotebookVerse: vi.fn(),
@@ -16,6 +17,7 @@ vi.mock("@/lib/db/queries", () => ({
   updateNotebookVerse: mocks.updateNotebookVerse,
   deleteNotebookVerse: mocks.deleteNotebookVerse,
 }));
+vi.mock("@/lib/db/vault", () => ({ getUserKey: mocks.getUserKey }));
 
 const { createVerseNote, saveVerseNote, deleteVerseNote } = await import(
   "@/actions/notebook"
@@ -33,6 +35,7 @@ beforeEach(() => {
   mocks.createNotebookVerse.mockResolvedValue({ id: NOTE_ID });
   mocks.updateNotebookVerse.mockResolvedValue({ id: NOTE_ID });
   mocks.deleteNotebookVerse.mockResolvedValue(true);
+  mocks.getUserKey.mockResolvedValue(undefined);
 });
 
 describe("createVerseNote", () => {
@@ -54,7 +57,7 @@ describe("createVerseNote", () => {
     await createVerseNote({ body: "one line" });
     expect(mocks.createNotebookVerse).toHaveBeenCalledWith({
       userId: "user_1",
-      body: "one line",
+      body: { sealed: false, body: "one line" },
     });
   });
 });
@@ -87,7 +90,7 @@ describe("saveVerseNote", () => {
     expect(mocks.updateNotebookVerse).toHaveBeenCalledWith({
       id: NOTE_ID,
       userId: "user_1",
-      body: "one line",
+      body: { sealed: false, body: "one line" },
     });
   });
 

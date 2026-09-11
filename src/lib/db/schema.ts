@@ -65,6 +65,41 @@ export const verses = pgTable(
   ],
 );
 
+// One row per person who has turned on a passphrase, and the presence of the
+// row is what says their verses are sealed in their own browser.
+//
+// Everything here is either public by nature (a salt, an iteration count) or
+// useless without the passphrase (the wrapped data key). The data key itself
+// never touches this table, this server, or these logs - which is the whole
+// claim the setting makes, and the reason losing both the passphrase and the
+// recovery code cannot be undone by anyone, including whoever runs the app.
+export const userKeys = pgTable("user_keys", {
+  userId: text("user_id").primaryKey(),
+  // "active" while the notebook is sealed. "unsealing" while the browser is
+  // converting verses back to server-readable ones, which is the only time a
+  // sealed account may also write plaintext - see src/actions/vault.ts.
+  state: text("state").notNull().default("active"),
+  kdf: text("kdf").notNull(),
+  iterations: integer("iterations").notNull(),
+  salt: text("salt").notNull(),
+  recoverySalt: text("recovery_salt").notNull(),
+  // The fingerprint every v2 envelope this person writes will name, so a verse
+  // sealed under a data key they have since replaced says so rather than
+  // failing as though it were corrupt.
+  dataKeyId: text("data_key_id").notNull(),
+  wrappedByPassphrase: text("wrapped_by_passphrase").notNull(),
+  wrappedByRecovery: text("wrapped_by_recovery").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export type UserKey = typeof userKeys.$inferSelect;
+export type NewUserKey = typeof userKeys.$inferInsert;
+
 export type DailyPrompt = typeof dailyPrompts.$inferSelect;
 export type NewDailyPrompt = typeof dailyPrompts.$inferInsert;
 export type Verse = typeof verses.$inferSelect;

@@ -1,25 +1,42 @@
+"use client";
+
 import Link from "next/link";
 
 import { Highlighted } from "@/components/highlighted";
+import { VaultUnlock } from "@/components/vault-unlock";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { firstBar } from "@/lib/bars";
+import { useVault } from "@/lib/crypto/vault-context";
 import { formatWrittenAt } from "@/lib/date";
 import type { NotebookEntry } from "@/lib/db/queries";
+import { NOTEBOOK_LIMIT } from "@/lib/list-limits";
+import { excerptAround, matchesQuery } from "@/lib/search";
+import { useSealedRows } from "@/lib/use-sealed-rows";
+
+const OPENING_LENGTH = 160;
+
+interface Row {
+  id: string;
+  barCount: number;
+  updatedAt: Date;
+  opening: string;
+  excerpt: string;
+}
 
 function barLabel(count: number): string {
   return count === 1 ? "1 bar" : `${count} bars`;
 }
 
-function Entry({ entry, query }: { entry: NotebookEntry; query: string | null }) {
+function Entry({ row, query }: { row: Row; query: string | null }) {
   // A loose verse is named by its opening bar. One that has been emptied out
   // still has to be reachable - it is a row someone can delete - so it keeps a
   // place in the list under a stand-in name rather than quietly disappearing.
-  const opening = firstBar(entry.opening);
-  const excerpt = entry.excerpt?.trim();
+  const opening = firstBar(row.opening);
+  const excerpt = row.excerpt.trim();
 
   return (
     <Link
-      href={`/notebook/${entry.id}`}
+      href={`/notebook/${row.id}`}
       className="focus-visible:ring-ring/50 block rounded-xl outline-none focus-visible:ring-[3px]"
     >
       <Card className="hover:border-ring transition-colors">
@@ -32,7 +49,7 @@ function Entry({ entry, query }: { entry: NotebookEntry; query: string | null })
             )}
           </CardTitle>
           <p className="text-muted-foreground font-mono text-xs">
-            {barLabel(entry.barCount)} - {formatWrittenAt(entry.updatedAt)}
+            {barLabel(row.barCount)} - {formatWrittenAt(row.updatedAt)}
           </p>
         </CardHeader>
         {/* The opening bar is already the title; repeating it under itself
@@ -56,7 +73,43 @@ export function NotebookList({
   entries: NotebookEntry[];
   query?: string | null;
 }) {
-  if (entries.length === 0) {
+  const { phase } = useVault();
+
+  const { rows, pending, error } = useSealedRows<NotebookEntry, Row>(entries, {
+    sealedBodyOf: (entry) => (entry.sealed ? entry.body : null),
+    resolve: (entry, body) => {
+      const base = { id: entry.id, barCount: entry.barCount, updatedAt: entry.updatedAt };
+
+      if (body === null) {
+        if (entry.sealed) return { ...base, opening: "", excerpt: "" };
+        return { ...base, opening: entry.opening, excerpt: entry.excerpt };
+      }
+
+      // Sealed, and now open. The search the server could not run runs here.
+      if (query && !matchesQuery(body, query)) return null;
+
+      return {
+        ...base,
+        opening: body.slice(0, OPENING_LENGTH),
+        excerpt: excerptAround(body, query),
+      };
+    },
+  });
+
+  if (error) return <p className="text-destructive text-sm">{error}</p>;
+
+  if (phase === "locked" && entries.some((entry) => entry.sealed)) {
+    return <VaultUnlock />;
+  }
+
+  if (pending) {
+    return <p className="text-muted-foreground text-sm">Opening your notebook...</p>;
+  }
+
+  // As in the archive: the server cannot cap what it has not searched.
+  const shown = rows.slice(0, NOTEBOOK_LIMIT);
+
+  if (shown.length === 0) {
     return (
       <p className="text-muted-foreground text-sm">
         {query
@@ -68,9 +121,9 @@ export function NotebookList({
 
   return (
     <ul className="flex flex-col gap-3">
-      {entries.map((entry) => (
-        <li key={entry.id}>
-          <Entry entry={entry} query={query} />
+      {shown.map((row) => (
+        <li key={row.id}>
+          <Entry row={row} query={query} />
         </li>
       ))}
     </ul>

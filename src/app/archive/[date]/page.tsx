@@ -51,6 +51,7 @@ export default async function ArchiveEntryPage({
       <VersePad
         promptId={detail.prompt.id}
         initialBody={detail.verse?.body ?? ""}
+        initialSealed={detail.verse?.sealed ?? false}
         initialCompletedAt={detail.verse?.completedAt?.toISOString() ?? null}
       />
     </main>

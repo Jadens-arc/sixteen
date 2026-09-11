@@ -6,8 +6,7 @@ import { NotebookPad } from "@/components/notebook-pad";
 import { SetupNotice } from "@/components/setup-notice";
 import { requireUserId } from "@/lib/auth";
 import { formatWrittenAt } from "@/lib/date";
-import { getNotebookVerse } from "@/lib/db/queries";
-import type { Verse } from "@/lib/db/schema";
+import { getNotebookVerse, type VerseView } from "@/lib/db/queries";
 import { privatePageMetadata } from "@/lib/metadata";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +21,7 @@ export default async function NotebookVersePage({
   const { id } = await params;
   if (!z.uuid().safeParse(id).success) notFound();
 
-  let verse: Verse | undefined;
+  let verse: VerseView | undefined;
   try {
     verse = await getNotebookVerse(id, await requireUserId());
   } catch (error) {
@@ -48,7 +47,7 @@ export default async function NotebookVersePage({
         </span>
       </div>
 
-      <NotebookPad id={verse.id} initialBody={verse.body} />
+      <NotebookPad id={verse.id} initialBody={verse.body} initialSealed={verse.sealed} />
     </main>
   );
 }

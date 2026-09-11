@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Verse } from "@/lib/db/schema";
+import type { VerseView } from "@/lib/db/queries";
 
 const mocks = vi.hoisted(() => ({
   push: vi.fn(),
@@ -32,6 +32,7 @@ vi.mock("@/actions/notebook", () => ({
   })),
   deleteVerseNote: vi.fn(async () => undefined),
 }));
+vi.mock("@/lib/crypto/vault-context", async () => (await import("./vault-mock")).vaultModuleMock());
 
 const { createVerseNote, deleteVerseNote, saveVerseNote } = await import(
   "@/actions/notebook"
@@ -58,7 +59,7 @@ describe("NotebookPad", () => {
   });
 
   it("writes nothing to the database until there is something to save", async () => {
-    render(<NotebookPad id={null} initialBody="" />);
+    render(<NotebookPad id={null} initialBody="" initialSealed={false} />);
 
     await settle();
 
@@ -68,7 +69,7 @@ describe("NotebookPad", () => {
 
   it("creates the verse on the first autosave and takes its URL", async () => {
     const user = userEvent.setup({ delay: null });
-    render(<NotebookPad id={null} initialBody="" />);
+    render(<NotebookPad id={null} initialBody="" initialSealed={false} />);
 
     await user.type(screen.getByLabelText("Verse"), "cold open");
     await settle();
@@ -82,7 +83,7 @@ describe("NotebookPad", () => {
   // to move without one.
   it("takes the new URL without navigating away from the pad", async () => {
     const user = userEvent.setup({ delay: null });
-    render(<NotebookPad id={null} initialBody="" />);
+    render(<NotebookPad id={null} initialBody="" initialSealed={false} />);
 
     await user.type(screen.getByLabelText("Verse"), "cold open");
     await settle();
@@ -93,7 +94,7 @@ describe("NotebookPad", () => {
 
   it("updates the verse it just created instead of creating another", async () => {
     const user = userEvent.setup({ delay: null });
-    render(<NotebookPad id={null} initialBody="" />);
+    render(<NotebookPad id={null} initialBody="" initialSealed={false} />);
 
     const pad = screen.getByLabelText("Verse");
     await user.type(pad, "cold open");
@@ -110,7 +111,7 @@ describe("NotebookPad", () => {
 
   it("saves an existing verse without creating anything", async () => {
     const user = userEvent.setup({ delay: null });
-    render(<NotebookPad id="note-9" initialBody="first bar" />);
+    render(<NotebookPad id="note-9" initialBody="first bar" initialSealed={false} />);
 
     await user.type(screen.getByLabelText("Verse"), " and another");
     await settle();
@@ -124,7 +125,7 @@ describe("NotebookPad", () => {
 
   it("counts bars as they are written", async () => {
     const user = userEvent.setup({ delay: null });
-    render(<NotebookPad id="note-9" initialBody="" />);
+    render(<NotebookPad id="note-9" initialBody="" initialSealed={false} />);
 
     await user.type(screen.getByLabelText("Verse"), "one{enter}two{enter}three");
 
@@ -134,7 +135,7 @@ describe("NotebookPad", () => {
   it("reports a failed save without losing what was typed", async () => {
     vi.mocked(saveVerseNote).mockRejectedValueOnce(new Error("offline"));
     const user = userEvent.setup({ delay: null });
-    render(<NotebookPad id="note-9" initialBody="first bar" />);
+    render(<NotebookPad id="note-9" initialBody="first bar" initialSealed={false} />);
 
     await user.type(screen.getByLabelText("Verse"), " more");
     await settle();
@@ -146,7 +147,7 @@ describe("NotebookPad", () => {
   it("retries a failed save on the next keystroke", async () => {
     vi.mocked(saveVerseNote).mockRejectedValueOnce(new Error("offline"));
     const user = userEvent.setup({ delay: null });
-    render(<NotebookPad id="note-9" initialBody="first bar" />);
+    render(<NotebookPad id="note-9" initialBody="first bar" initialSealed={false} />);
 
     const pad = screen.getByLabelText("Verse");
     await user.type(pad, " more");
@@ -161,14 +162,14 @@ describe("NotebookPad", () => {
   });
 
   it("offers no delete on a verse that does not exist yet", () => {
-    render(<NotebookPad id={null} initialBody="" />);
+    render(<NotebookPad id={null} initialBody="" initialSealed={false} />);
 
     expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
   });
 
   it("asks before deleting", async () => {
     const user = userEvent.setup({ delay: null });
-    render(<NotebookPad id="note-9" initialBody="first bar" />);
+    render(<NotebookPad id="note-9" initialBody="first bar" initialSealed={false} />);
 
     await user.click(screen.getByRole("button", { name: "Delete" }));
 
@@ -178,7 +179,7 @@ describe("NotebookPad", () => {
 
   it("backs out of a delete", async () => {
     const user = userEvent.setup({ delay: null });
-    render(<NotebookPad id="note-9" initialBody="first bar" />);
+    render(<NotebookPad id="note-9" initialBody="first bar" initialSealed={false} />);
 
     await user.click(screen.getByRole("button", { name: "Delete" }));
     await user.click(screen.getByRole("button", { name: "Keep it" }));
@@ -189,7 +190,7 @@ describe("NotebookPad", () => {
 
   it("deletes on confirmation and leaves for the list", async () => {
     const user = userEvent.setup({ delay: null });
-    render(<NotebookPad id="note-9" initialBody="first bar" />);
+    render(<NotebookPad id="note-9" initialBody="first bar" initialSealed={false} />);
 
     await user.click(screen.getByRole("button", { name: "Delete" }));
     await act(async () => {
@@ -217,7 +218,7 @@ describe("NotebookPad inside its route", () => {
       <NotebookPad
         key={id ?? "new"}
         id={id}
-        initialBody={id ? (stored.get(id) ?? "") : ""}
+        initialBody={id ? (stored.get(id) ?? "") : ""} initialSealed={false}
       />
     );
   }
@@ -230,7 +231,7 @@ describe("NotebookPad inside its route", () => {
     });
     vi.mocked(saveVerseNote).mockImplementation(async ({ id, body }) => {
       stored.set(id, body);
-      return { id, body } as Verse;
+      return { id, body } as unknown as VerseView;
     });
   });
 
@@ -245,10 +246,10 @@ describe("NotebookPad inside its route", () => {
     let finishCreate = () => {};
     vi.mocked(createVerseNote).mockImplementationOnce(
       ({ body }) =>
-        new Promise<Verse>((resolve) => {
+        new Promise<VerseView>((resolve) => {
           finishCreate = () => {
             stored.set("note-1", body);
-            resolve({ id: "note-1", body } as Verse);
+            resolve({ id: "note-1", body } as unknown as VerseView);
           };
         }),
     );

@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   auth: vi.fn<() => Promise<{ userId: string | null }>>(),
   upsertVerse: vi.fn(),
   getVerseForPrompt: vi.fn(),
+  getUserKey: vi.fn(),
 }));
 
 vi.mock("@clerk/nextjs/server", () => ({ auth: mocks.auth }));
@@ -14,6 +15,9 @@ vi.mock("@/lib/db/queries", () => ({
   upsertVerse: mocks.upsertVerse,
   getVerseForPrompt: mocks.getVerseForPrompt,
 }));
+// No passphrase on this account unless a test says so, which is the path
+// every save took before the setting existed.
+vi.mock("@/lib/db/vault", () => ({ getUserKey: mocks.getUserKey }));
 
 const { saveVerse, completeVerse } = await import("@/actions/verse");
 
@@ -28,6 +32,7 @@ beforeEach(() => {
   mocks.auth.mockResolvedValue({ userId: null });
   mocks.upsertVerse.mockResolvedValue({ id: "verse_1" });
   mocks.getVerseForPrompt.mockResolvedValue(undefined);
+  mocks.getUserKey.mockResolvedValue(undefined);
 });
 
 describe("saveVerse", () => {
@@ -63,7 +68,7 @@ describe("saveVerse", () => {
     expect(mocks.upsertVerse).toHaveBeenCalledWith({
       promptId: PROMPT_ID,
       userId: "user_1",
-      body: "one line",
+      body: { sealed: false, body: "one line" },
     });
   });
 
@@ -87,7 +92,7 @@ describe("completeVerse", () => {
 
   it("refuses to complete a verse short of the bar target", async () => {
     signedIn();
-    mocks.getVerseForPrompt.mockResolvedValue({ body: "one\ntwo\nthree" });
+    mocks.getVerseForPrompt.mockResolvedValue({ body: "one\ntwo\nthree", sealed: false });
     await expect(completeVerse({ promptId: PROMPT_ID })).rejects.toThrow("at least 16 bars");
     expect(mocks.upsertVerse).not.toHaveBeenCalled();
   });
@@ -95,12 +100,12 @@ describe("completeVerse", () => {
   it("completes a verse that reaches the bar target", async () => {
     signedIn();
     const body = Array.from({ length: 16 }, (_, i) => `bar ${i + 1}`).join("\n");
-    mocks.getVerseForPrompt.mockResolvedValue({ body });
+    mocks.getVerseForPrompt.mockResolvedValue({ body, sealed: false });
     await completeVerse({ promptId: PROMPT_ID });
     expect(mocks.upsertVerse).toHaveBeenCalledWith({
       promptId: PROMPT_ID,
       userId: "user_1",
-      body,
+      body: { sealed: false, body },
       completed: true,
     });
   });

@@ -18,6 +18,7 @@ vi.mock("@/actions/verse", () => ({
     completedAt: new Date(),
   })),
 }));
+vi.mock("@/lib/crypto/vault-context", async () => (await import("./vault-mock")).vaultModuleMock());
 
 const { saveVerse } = await import("@/actions/verse");
 const { toast } = await import("sonner");
@@ -43,7 +44,7 @@ describe("VersePad", () => {
 
   it("reflects the number of bars typed", async () => {
     const user = userEvent.setup({ delay: null });
-    render(<VersePad promptId="prompt-1" initialBody="" initialCompletedAt={null} />);
+    render(<VersePad promptId="prompt-1" initialBody="" initialCompletedAt={null} initialSealed={false} />);
 
     await user.type(screen.getByLabelText("Verse"), linesOf(10));
 
@@ -52,7 +53,7 @@ describe("VersePad", () => {
 
   it("keeps the complete button disabled below 16 bars", async () => {
     const user = userEvent.setup({ delay: null });
-    render(<VersePad promptId="prompt-1" initialBody="" initialCompletedAt={null} />);
+    render(<VersePad promptId="prompt-1" initialBody="" initialCompletedAt={null} initialSealed={false} />);
 
     await user.type(screen.getByLabelText("Verse"), linesOf(15));
 
@@ -61,7 +62,7 @@ describe("VersePad", () => {
 
   it("enables the complete button once 16 bars are written", async () => {
     const user = userEvent.setup({ delay: null });
-    render(<VersePad promptId="prompt-1" initialBody="" initialCompletedAt={null} />);
+    render(<VersePad promptId="prompt-1" initialBody="" initialCompletedAt={null} initialSealed={false} />);
 
     await user.type(screen.getByLabelText("Verse"), linesOf(16));
 
@@ -71,7 +72,7 @@ describe("VersePad", () => {
 
   it("autosaves the body after the user stops typing", async () => {
     const user = userEvent.setup({ delay: null });
-    render(<VersePad promptId="prompt-1" initialBody="" initialCompletedAt={null} />);
+    render(<VersePad promptId="prompt-1" initialBody="" initialCompletedAt={null} initialSealed={false} />);
 
     await user.type(screen.getByLabelText("Verse"), "first bar");
     expect(saveVerse).not.toHaveBeenCalled();
@@ -84,7 +85,7 @@ describe("VersePad", () => {
   });
 
   it("does not resend a body that already matches the last save", async () => {
-    render(<VersePad promptId="prompt-1" initialBody="first bar" initialCompletedAt={null} />);
+    render(<VersePad promptId="prompt-1" initialBody="first bar" initialCompletedAt={null} initialSealed={false} />);
 
     await act(async () => {
       vi.advanceTimersByTime(800);
@@ -96,7 +97,7 @@ describe("VersePad", () => {
   it("shows a toast when autosave fails", async () => {
     vi.mocked(saveVerse).mockRejectedValueOnce(new Error("network down"));
     const user = userEvent.setup({ delay: null });
-    render(<VersePad promptId="prompt-1" initialBody="" initialCompletedAt={null} />);
+    render(<VersePad promptId="prompt-1" initialBody="" initialCompletedAt={null} initialSealed={false} />);
 
     await user.type(screen.getByLabelText("Verse"), "first bar");
     await act(async () => {
@@ -112,7 +113,7 @@ describe("VersePad", () => {
       <VersePad
         promptId="prompt-1"
         initialBody="first bar"
-        initialCompletedAt="2026-03-04T10:00:00.000Z"
+        initialCompletedAt="2026-03-04T10:00:00.000Z" initialSealed={false}
       />,
     );
 
@@ -130,7 +131,7 @@ describe("VersePad", () => {
       <VersePad
         promptId="prompt-1"
         initialBody="first bar"
-        initialCompletedAt="2026-03-04T10:00:00.000Z"
+        initialCompletedAt="2026-03-04T10:00:00.000Z" initialSealed={false}
       />,
     );
 
@@ -152,7 +153,7 @@ describe("VersePad", () => {
       <VersePad
         promptId="prompt-1"
         initialBody="first bar"
-        initialCompletedAt="2026-03-04T10:00:00.000Z"
+        initialCompletedAt="2026-03-04T10:00:00.000Z" initialSealed={false}
       />,
     );
 

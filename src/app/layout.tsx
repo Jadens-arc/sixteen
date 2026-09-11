@@ -7,6 +7,7 @@ import { Analytics } from "@vercel/analytics/next";
 import { AuthButtons } from "@/components/auth-buttons";
 import { JsonLd } from "@/components/json-ld";
 import { Toaster } from "@/components/ui/sonner";
+import { VaultOffProvider, VaultProvider } from "@/lib/crypto/vault-context";
 import { clerkAppearance } from "@/lib/clerk-appearance";
 import {
   siteDescription,
@@ -103,6 +104,9 @@ const signedInLinks = (
     </Link>
     <Link href="/notebook" className="text-muted-foreground hover:text-foreground">
       Notebook
+    </Link>
+    <Link href="/settings" className="text-muted-foreground hover:text-foreground">
+      Settings
     </Link>
   </>
 );
@@ -220,7 +224,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   if (!clerkEnabled) {
-    return <Shell>{children}</Shell>;
+    return (
+      <Shell>
+        <VaultOffProvider>{children}</VaultOffProvider>
+      </Shell>
+    );
   }
 
   // Without these, Clerk sends signed-out visitors to its hosted Account
@@ -233,7 +241,11 @@ export default function RootLayout({
       signInFallbackRedirectUrl="/"
       signUpFallbackRedirectUrl="/"
     >
-      <Shell>{children}</Shell>
+      <Shell>
+        {/* Inside ClerkProvider: the vault is per-person, and it reads the
+            signed-in id to bind every key and ciphertext to its owner. */}
+        <VaultProvider>{children}</VaultProvider>
+      </Shell>
     </ClerkProvider>
   );
 }

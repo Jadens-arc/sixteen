@@ -14,8 +14,9 @@ import {
   getOrCreateTodayPrompt,
   getStreak,
   getVerseForPrompt,
+  type VerseView,
 } from "@/lib/db/queries";
-import type { DailyPrompt, Verse } from "@/lib/db/schema";
+import type { DailyPrompt } from "@/lib/db/schema";
 import { clampDescription } from "@/lib/site";
 import { dailyPromptGraph, faqGraph, howToGraph } from "@/lib/structured-data";
 
@@ -26,7 +27,7 @@ export const dynamic = "force-dynamic";
 
 interface Today {
   prompt: DailyPrompt;
-  verse: Verse | undefined;
+  verse: VerseView | undefined;
   streak: number;
   signedIn: boolean;
 }
@@ -114,6 +115,7 @@ export default async function TodayPage() {
           <VersePad
             promptId={prompt.id}
             initialBody={verse?.body ?? ""}
+            initialSealed={verse?.sealed ?? false}
             initialCompletedAt={verse?.completedAt?.toISOString() ?? null}
           />
         ) : (

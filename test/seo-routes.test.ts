@@ -23,6 +23,7 @@ describe("robots", () => {
 
     expect(disallowed).toContain("/archive");
     expect(disallowed).toContain("/notebook");
+    expect(disallowed).toContain("/settings");
     expect(disallowed).toContain("/api/");
   });
 
