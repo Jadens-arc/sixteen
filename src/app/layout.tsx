@@ -147,6 +147,31 @@ function Header() {
   );
 }
 
+// The home page only renders "How it works" and the FAQ while signed out, so
+// these anchors only resolve while signed out. Signed in, the same row points
+// at the two pages that actually hold something of yours.
+const signedOutFooterLinks = (
+  <>
+    <Link href="/#how-it-works" className="hover:text-foreground">
+      How it works
+    </Link>
+    <Link href="/#faq" className="hover:text-foreground">
+      FAQ
+    </Link>
+  </>
+);
+
+const signedInFooterLinks = (
+  <>
+    <Link href="/archive" className="hover:text-foreground">
+      Archive
+    </Link>
+    <Link href="/notebook" className="hover:text-foreground">
+      Notebook
+    </Link>
+  </>
+);
+
 function Footer() {
   return (
     <footer className="text-muted-foreground mx-auto flex w-full max-w-2xl flex-col gap-2 px-4 py-10 text-xs sm:px-8">
@@ -159,12 +184,14 @@ function Footer() {
         <Link href="/" className="hover:text-foreground">
           Today&rsquo;s prompt
         </Link>
-        <Link href="/#how-it-works" className="hover:text-foreground">
-          How it works
-        </Link>
-        <Link href="/#faq" className="hover:text-foreground">
-          FAQ
-        </Link>
+        {clerkEnabled ? (
+          <>
+            <SignedIn>{signedInFooterLinks}</SignedIn>
+            <SignedOut>{signedOutFooterLinks}</SignedOut>
+          </>
+        ) : (
+          signedOutFooterLinks
+        )}
       </nav>
     </footer>
   );
