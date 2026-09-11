@@ -99,6 +99,32 @@ Two details are worth knowing:
 The verse body is joined on the user id before it is matched, so a search can
 only ever hit your own writing.
 
+## The streak
+
+`getStreak()` counts back from today (or from yesterday, if today's verse
+isn't finished yet) over the dates of completed daily verses, and stops at
+the first gap. Loose notebook verses never reach it - the query joins through
+`prompt_id`.
+
+The number alone says nothing about whether four days is a lot, so
+`src/lib/streak.ts` sorts it into six named tiers - Spark, Ember, Blaze,
+Inferno, Wildfire, Blue flame - at 1, 3, 7, 14, 30 and 100 days, each with
+its own flame and colour. The colours run the way a real flame gets hotter:
+red, orange, amber, yellow, white, then blue, so the palette is a scale
+rather than six arbitrary colours.
+
+`StreakFlame` puts that at the top of the home page for a signed-in writer,
+above the day's prompt: the flame, the streak, its tier and how many days are
+left to the next one. Clicking it opens the full ladder with the current tier
+marked. It's a native `<details>`, so the component stays a server component,
+the legend is in the page whether it's open or closed, and no JavaScript is
+needed to open it. `StreakBadge` is the same tier in one line, next to the
+archive's heading.
+
+The tiers are the single source of both: adding one is an entry in
+`STREAK_TIERS`, and `streakTier()` takes the last tier whose floor the streak
+has cleared, so only the floors matter - the printed ranges follow from them.
+
 ## The notebook
 
 `/notebook` is the same pad with nothing in front of it: no prompt, no
