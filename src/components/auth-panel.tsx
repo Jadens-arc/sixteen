@@ -4,6 +4,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { siteTagline } from "@/lib/site";
 
 // The frame around Clerk's own sign-in and sign-up cards. Clerk draws the
 // card itself (themed in lib/clerk-appearance.ts) and titles it with the app
@@ -13,7 +14,7 @@ export function AuthPanel({ children }: { children: React.ReactNode }) {
   return (
     <main className="mx-auto flex min-h-[calc(100vh-65px)] w-full max-w-md flex-col items-center justify-center gap-6 p-6">
       <p className="text-muted-foreground text-center text-sm text-balance">
-        One prompt a day. Sixteen bars against the clock.
+        {siteTagline}
       </p>
       {children}
     </main>

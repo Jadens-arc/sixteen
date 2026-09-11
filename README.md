@@ -134,6 +134,8 @@ See `.env.example` for the same list with inline comments.
 | Variable | Required | Notes |
 | --- | --- | --- |
 | `DATABASE_URL` | Yes | Neon Postgres connection string (pooled). |
+| `NEXT_PUBLIC_SITE_URL` | Recommended | Canonical origin, e.g. `https://sixteen.rap`. Used for canonical tags, the sitemap, `robots.txt`, Open Graph URLs and JSON-LD `@id`s. Falls back to `VERCEL_PROJECT_PRODUCTION_URL`, then `http://localhost:3000`. Set it once a custom domain is attached, or every canonical points at the `*.vercel.app` hostname. |
+| `NEXT_PUBLIC_TWITTER_HANDLE` | No | `@handle` for Twitter/X card attribution. Omitted from the tags when unset. |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Yes | Clerk publishable key. Without it, the app builds and boots in a keyless state: no sign-in and no `<ClerkProvider>`. In production every route except `/`, `/sign-in`, `/sign-up` and `/api/cron` then returns `503`; outside production those pages render a setup notice instead. |
 | `CLERK_SECRET_KEY` | Yes | Clerk secret key. |
 | `NEXT_PUBLIC_CLERK_SIGN_IN_URL` | No | Not needed. `<ClerkProvider>` sets `signInUrl="/sign-in"` in `src/app/layout.tsx`; set this only to move the page elsewhere. |
@@ -170,8 +172,10 @@ a misconfigured deploy shows on the home page - a notice instead of a plain
 ## What is public
 
 `src/middleware.ts` lists the routes that don't require a session: `/`,
-`/sign-in`, `/sign-up` and `/api/cron`. Everything else - the archive and the
-whole notebook included - needs one. `/` is public so a visitor can read
+`/sign-in`, `/sign-up`, `/api/cron`, and the crawler routes in
+`src/lib/crawler-routes.ts` (`/robots.txt`, `/sitemap.xml`, `/llms.txt`, the
+generated share images). Everything else - the archive and the whole notebook
+included - needs one. `/` is public so a visitor can read
 the day's prompt before deciding to sign up - `src/app/page.tsx` calls
 `getUserId()` rather than `requireUserId()` and swaps the pad for
 `<SignedOutPad />`, which opens Clerk's sign-up modal on the first click.
@@ -189,6 +193,62 @@ prompt job keeps running through a Clerk misconfiguration.
 `/`, `/archive`, `/archive/<date>` and every `/notebook` route are
 `force-dynamic` so they're never prerendered at build time, and a missing `DATABASE_URL` (or any other setup problem) surfaces as an
 in-app notice at request time instead of a stack trace.
+
+## SEO and AEO
+
+The public surface is one page - `/` - and it changes every morning. Everything
+below is built around that single fact: make the one page rank, and make the
+prompt on it something an answer engine can quote.
+
+**Where the copy lives.** `src/lib/site.ts` holds the description, the
+keywords, the three how-it-works steps and the FAQ. The home page renders them,
+`src/lib/structured-data.ts` emits them as JSON-LD, and `/llms.txt` writes them
+out as prose. Editing the array is the whole edit - the three can't drift.
+
+**On the page.** `src/app/page.tsx` builds its `<title>` and description from
+today's actual concept (`generateMetadata()` and the component share one
+database read via React's `cache()`), so the page has a reason to be recrawled
+daily and a reason to be clicked. There is exactly one `<h1>`, naming what a
+searcher types rather than the brand; the day's concept is the `<h2>` in the
+prompt card. Under the pad sit the how-it-works steps and an FAQ, each answer
+written so its first sentence stands alone - that sentence is all a featured
+snippet or an AI summary usually takes.
+
+**Structured data.** `Organization`, `WebSite` and a `WebApplication` marked
+free on every page; `HowTo`, `FAQPage` and a dated `CreativeWork` for today's
+prompt on the home page.
+
+**Crawl control.** `src/app/robots.ts` allows `/` and disallows the routes that
+need a session; `src/app/sitemap.ts` lists `/` alone, with today's date as
+`lastModified` (it revalidates hourly, or the date would freeze at deploy
+time). The private routes also carry `noindex, follow` from
+`privatePageMetadata()` in `src/lib/metadata.ts` - both are needed, because a
+`Disallow`ed page can still be indexed from an external link precisely because
+the crawler never fetches it to read the tag.
+
+**Streamed metadata.** Every page here is dynamic, and Next streams a dynamic
+page's metadata *after* `</head>`. Browsers and Googlebot hoist it; most AI
+crawlers and link unfurlers parse raw HTML and would see a page with no title.
+`htmlLimitedBots` in `next.config.ts` names those agents - the default list
+plus GPTBot, ClaudeBot, PerplexityBot and friends - so Next does a blocking
+render and puts the metadata back in `<head>` for them.
+
+**Careful with `src/middleware.ts`.** Its matcher only skips paths ending in a
+handful of static extensions, and `.txt`, `.xml` and the extensionless
+generated image routes are not among them. Anything a crawler fetches has to be
+in `src/lib/crawler-routes.ts` or Clerk redirects it to the sign-in page -
+which, for `/robots.txt`, means no organic traffic at all. `test/seo-routes.test.ts`
+guards that.
+
+**Analytics.** `@vercel/analytics` is mounted in the root layout. It reports in
+the Vercel dashboard once Web Analytics is enabled for the project.
+
+**Not done here.** The biggest remaining lever is more indexable pages. Every
+past prompt is already public information - the same prompt goes to everyone -
+but `/archive/<date>` shows a person's own verse and so is behind sign-in.
+A public, indexable page per past prompt would turn one URL into hundreds
+without exposing anyone's writing. That is a product decision, not a metadata
+one, so it is left alone.
 
 ## A note on Clerk keys and domains
 

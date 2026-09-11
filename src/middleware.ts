@@ -1,6 +1,8 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { CRAWLER_ROUTE_PATTERNS } from "@/lib/crawler-routes";
+
 // "/" is public so anyone can read the day's prompt without an account; the
 // sign-up prompt comes when they click the pad to write. Note that a server
 // action posts back to the page it was called from, so this also stops the
@@ -11,6 +13,10 @@ const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/api/cron(.*)",
+  // Everything a crawler or a link unfurler fetches without a session -
+  // robots.txt, the sitemap, the generated share images. See the module for
+  // why leaving one out takes the site out of the index.
+  ...CRAWLER_ROUTE_PATTERNS,
 ]);
 
 // clerkMiddleware() throws on every request, before our handler runs, when no

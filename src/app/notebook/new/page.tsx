@@ -3,8 +3,11 @@ import Link from "next/link";
 import { NotebookPad } from "@/components/notebook-pad";
 import { SetupNotice } from "@/components/setup-notice";
 import { requireUserId } from "@/lib/auth";
+import { privatePageMetadata } from "@/lib/metadata";
 
 export const dynamic = "force-dynamic";
+
+export const metadata = privatePageMetadata("New notebook verse");
 
 // Nothing is read or written here yet - the first autosave creates the row and
 // swaps this URL for the verse's own. The auth check still runs, so a page that
