@@ -1,13 +1,28 @@
-import { faqs, howItWorks } from "@/lib/site";
+import { faqs, howItWorks, siteDescription } from "@/lib/site";
 
 /**
- * The prose under the pad. It exists for two audiences at once: someone who
+ * The prose around the pad. It exists for two audiences at once: someone who
  * landed here from a search and needs to know what this is before they write
  * anything, and the crawlers and answer engines that can only rank or quote a
  * page that actually says what it does. Every answer leads with the answer -
  * the first sentence has to stand alone, because a snippet or an AI summary
  * usually takes nothing else.
+ *
+ * Neither audience is a signed-in visitor: they already know what the app is
+ * and came back to write, so the home page renders all of this only while
+ * signed out. A crawler is always signed out, so nothing here is ever hidden
+ * from one.
  */
+
+/** The sentence under the <h1> that says what the app is. */
+export function SiteIntro() {
+  return (
+    <p className="text-muted-foreground text-sm leading-relaxed">
+      {siteDescription} A new prompt lands every morning and everyone writes to
+      the same one.
+    </p>
+  );
+}
 
 export function HowItWorks() {
   return (

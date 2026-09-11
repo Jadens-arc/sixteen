@@ -1,7 +1,7 @@
 import { cache } from "react";
 import type { Metadata } from "next";
 
-import { Faq, HowItWorks } from "@/components/site-copy";
+import { Faq, HowItWorks, SiteIntro } from "@/components/site-copy";
 import { JsonLd } from "@/components/json-ld";
 import { PromptCard } from "@/components/prompt-card";
 import { SetupNotice } from "@/components/setup-notice";
@@ -11,7 +11,7 @@ import { getUserId } from "@/lib/auth";
 import { formatPromptDate } from "@/lib/date";
 import { getOrCreateTodayPrompt, getVerseForPrompt } from "@/lib/db/queries";
 import type { DailyPrompt, Verse } from "@/lib/db/schema";
-import { clampDescription, siteDescription } from "@/lib/site";
+import { clampDescription } from "@/lib/site";
 import { dailyPromptGraph, faqGraph, howToGraph } from "@/lib/structured-data";
 
 // This page hits the database on every request, so it can never be part of
@@ -86,10 +86,9 @@ export default async function TodayPage() {
           <h1 className="text-2xl leading-tight font-semibold sm:text-3xl">
             Today&rsquo;s 16-bar rap writing prompt
           </h1>
-          <p className="text-muted-foreground text-sm leading-relaxed">
-            {siteDescription} A new prompt lands every morning and everyone
-            writes to the same one.
-          </p>
+          {/* Someone already signed in knows what the app is - they came back
+              to write, not to be pitched it again. See site-copy.tsx. */}
+          {signedIn ? null : <SiteIntro />}
         </div>
 
         <PromptCard prompt={prompt} />
@@ -105,12 +104,20 @@ export default async function TodayPage() {
         )}
       </div>
 
-      <HowItWorks />
-      <Faq />
+      {/* The explainer and the FAQ, and the structured data that restates
+          them, go together: schema is only allowed to describe what the page
+          actually renders. Both stay for signed-out visitors and therefore for
+          every crawler, which is where all of their value was to begin with. */}
+      {signedIn ? null : (
+        <>
+          <HowItWorks />
+          <Faq />
+          <JsonLd data={howToGraph()} />
+          <JsonLd data={faqGraph()} />
+        </>
+      )}
 
       <JsonLd data={dailyPromptGraph(prompt)} />
-      <JsonLd data={howToGraph()} />
-      <JsonLd data={faqGraph()} />
     </main>
   );
 }
