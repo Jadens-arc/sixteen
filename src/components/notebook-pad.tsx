@@ -55,7 +55,15 @@ export function NotebookPad({
     setId(created.id);
     // Swap the URL under the blank page so a reload, a share or the back
     // button lands on the verse that now exists.
-    router.replace(`/notebook/${created.id}`, { scroll: false });
+    //
+    // The History API rather than router.replace(): /notebook/new and
+    // /notebook/[id] are different route segments, so a router navigation
+    // tears this pad down mid-keystroke and mounts a fresh one on whatever
+    // the server had a moment ago. Everything typed while the create was in
+    // flight goes with it - the text on screen, and the debounce that was
+    // about to save it. Next patches replaceState, so the router still knows
+    // where it is; nothing re-renders, which is the entire point.
+    window.history.replaceState(null, "", `/notebook/${created.id}`);
 
     // The save that lost the race carries newer text than the one that created
     // the row, so it still has something to write.
