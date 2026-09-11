@@ -1,6 +1,9 @@
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { Verse } from "@/lib/db/schema";
 
 const mocks = vi.hoisted(() => ({
   push: vi.fn(),
@@ -71,7 +74,21 @@ describe("NotebookPad", () => {
     await settle();
 
     expect(createVerseNote).toHaveBeenCalledWith({ body: "cold open" });
-    expect(mocks.replace).toHaveBeenCalledWith("/notebook/note-1", { scroll: false });
+    expect(window.location.pathname).toBe("/notebook/note-1");
+  });
+
+  // A router navigation would swap /notebook/new for /notebook/[id] - two
+  // different route segments - and take the live pad down with it. The URL has
+  // to move without one.
+  it("takes the new URL without navigating away from the pad", async () => {
+    const user = userEvent.setup({ delay: null });
+    render(<NotebookPad id={null} initialBody="" />);
+
+    await user.type(screen.getByLabelText("Verse"), "cold open");
+    await settle();
+
+    expect(mocks.replace).not.toHaveBeenCalled();
+    expect(mocks.refresh).not.toHaveBeenCalled();
   });
 
   it("updates the verse it just created instead of creating another", async () => {
@@ -181,5 +198,75 @@ describe("NotebookPad", () => {
 
     expect(deleteVerseNote).toHaveBeenCalledWith({ id: "note-9" });
     expect(mocks.push).toHaveBeenCalledWith("/notebook");
+  });
+});
+
+// The pad in the route Next actually renders it in. /notebook/new and
+// /notebook/[id] are different route segments, so any router navigation
+// between them unmounts the pad mid-keystroke and mounts a new one on whatever
+// the server has stored - which is what this harness reproduces.
+describe("NotebookPad inside its route", () => {
+  const stored = new Map<string, string>();
+  let navigate: (id: string) => void = () => {};
+
+  function NotebookRoute() {
+    const [id, setId] = useState<string | null>(null);
+    navigate = setId;
+
+    return (
+      <NotebookPad
+        key={id ?? "new"}
+        id={id}
+        initialBody={id ? (stored.get(id) ?? "") : ""}
+      />
+    );
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    stored.clear();
+    mocks.replace.mockImplementation((url: string) => {
+      navigate(url.split("/").pop() ?? "");
+    });
+    vi.mocked(saveVerseNote).mockImplementation(async ({ id, body }) => {
+      stored.set(id, body);
+      return { id, body } as Verse;
+    });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.resetAllMocks();
+  });
+
+  it("keeps what was typed while the create was still in flight", async () => {
+    const user = userEvent.setup({ delay: null });
+
+    let finishCreate = () => {};
+    vi.mocked(createVerseNote).mockImplementationOnce(
+      ({ body }) =>
+        new Promise<Verse>((resolve) => {
+          finishCreate = () => {
+            stored.set("note-1", body);
+            resolve({ id: "note-1", body } as Verse);
+          };
+        }),
+    );
+
+    render(<NotebookRoute />);
+    const pad = screen.getByLabelText("Verse");
+
+    await user.type(pad, "cold open");
+    await settle();
+
+    // The row is being written; the writer has not stopped writing.
+    await user.type(pad, " and one more");
+    await act(async () => {
+      finishCreate();
+    });
+    await settle();
+
+    expect(pad).toHaveValue("cold open and one more");
+    expect(stored.get("note-1")).toBe("cold open and one more");
   });
 });

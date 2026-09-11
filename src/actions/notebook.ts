@@ -26,10 +26,13 @@ export async function createVerseNote(input: { body: string }): Promise<Verse> {
   const userId = await requireUserId();
   const { body } = createSchema.parse(input);
 
-  const verse = await createNotebookVerse({ userId, body });
-
-  revalidatePath("/notebook");
-  return verse;
+  // No revalidatePath("/notebook") here, deliberately. This action fires from
+  // a pad someone is still typing in, and a revalidating action makes the
+  // client refetch the route it is sitting on - which, once the pad has swapped
+  // the URL for the new verse's, is a different route segment and so a remount
+  // on top of live keystrokes. The list is force-dynamic and the client cache
+  // holds dynamic segments for zero seconds, so it reads the new row anyway.
+  return createNotebookVerse({ userId, body });
 }
 
 export async function saveVerseNote(input: {
