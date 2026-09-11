@@ -4,11 +4,14 @@ import { SetupNotice } from "@/components/setup-notice";
 import { StreakBadge } from "@/components/streak-badge";
 import { requireUserId } from "@/lib/auth";
 import { getStreak, listArchive, type ArchiveEntry } from "@/lib/db/queries";
+import { privatePageMetadata } from "@/lib/metadata";
 import { normalizeSearchQuery } from "@/lib/search";
 
 // Same reasoning as the Today page: this reads from the database on every
 // request and must never be prerendered at build time.
 export const dynamic = "force-dynamic";
+
+export const metadata = privatePageMetadata("Archive");
 
 async function loadArchive(
   query: string | null,

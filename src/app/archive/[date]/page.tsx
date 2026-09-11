@@ -7,9 +7,12 @@ import { VersePad } from "@/components/verse-pad";
 import { requireUserId } from "@/lib/auth";
 import { isPromptDate } from "@/lib/date";
 import { getArchiveDetail, type ArchiveDetail } from "@/lib/db/queries";
+import { privatePageMetadata } from "@/lib/metadata";
 
 // Reads a verse per request, like every other page that touches the database.
 export const dynamic = "force-dynamic";
+
+export const metadata = privatePageMetadata("Archived prompt");
 
 export default async function ArchiveEntryPage({
   params,
